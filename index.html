@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Placar · simulador de futebol</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#E9ECE4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Placar">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23B8F23A'/%3E%3Crect x='7' y='9' width='6' height='14' rx='3' fill='%230F3D24'/%3E%3Crect x='19' y='9' width='6' height='14' rx='3' fill='%230F3D24'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="wrap">
+      <a class="brand" href="#/" aria-label="Placar, início">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#B8F23A"/><rect x="7" y="9" width="6" height="14" rx="3" fill="#0F3D24"/><circle cx="16" cy="13" r="1.4" fill="#0F3D24"/><circle cx="16" cy="19" r="1.4" fill="#0F3D24"/><rect x="19" y="9" width="6" height="14" rx="3" fill="#0F3D24"/></svg>
+        <span>placar</span>
+      </a>
+      <nav class="nav-links" id="navlinks">
+        <a href="#/" data-r="">Início</a>
+        <a href="#/partida" data-r="partida">Partida</a>
+        <a href="#/competicoes" data-r="competicoes">Competições</a>
+        <a href="#/clubes" data-r="clubes">Clubes</a>
+      </nav>
+      <a class="btn btn-line btn-sm cta" href="#/competicoes" data-act="newComp">Nova competição</a>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <span>Placar · protótipo local. Seus dados ficam salvos neste navegador.</span>
+      <span>Escudos: <a href="https://www.footylogos.com/" target="_blank" rel="noopener">FootyLogos.com</a></span>
+    </div>
+  </footer>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/engine.js"></script>
+  <script src="assets/js/reg.js"></script>
+  <script src="assets/js/templates.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    // instalação como app (só funciona quando o site está publicado, não ao abrir o arquivo direto)
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  </script>
+</body>
+</html>
