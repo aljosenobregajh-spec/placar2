@@ -1,8 +1,8 @@
 /* Placar — service worker: deixa o site abrir sem internet depois da primeira visita.
    Páginas, estilos e scripts: rede primeiro (pega as atualizações), cópia salva se estiver offline.
    Escudos e fontes: cópia salva primeiro (quase nunca mudam). */
-const VERSION = 'placar-v1';
-const CORE = ['./', 'index.html', 'assets/css/style.css', 'assets/js/data.js', 'assets/js/engine.js', 'assets/js/reg.js', 'assets/js/templates.js', 'assets/js/app.js', 'manifest.webmanifest', 'assets/icons/icon-192.png'];
+const VERSION = 'placar-v2';
+const CORE = ['./', 'index.html', 'assets/css/style.css', 'assets/js/data.js', 'assets/js/nations.js', 'assets/js/engine.js', 'assets/js/reg.js', 'assets/js/templates.js', 'assets/js/app.js', 'manifest.webmanifest', 'assets/icons/icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));

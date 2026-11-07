@@ -13,6 +13,9 @@ const Reg = (() => {
   const uid = () => E.uid();
   const T = id => E.T(id);
   const clone = o => JSON.parse(JSON.stringify(o));
+  // sedes da competição em andamento (jogam em casa num torneio de campo neutro)
+  let HOSTS = new Set();
+  const setHosts = comp => { HOSTS = new Set((comp.entries && comp.entries.hosts) || []); };
 
   /* ================= Classificação ================= */
   function blankRow(id) { return { id, p: 0, j: 0, v: 0, e: 0, d: 0, gp: 0, gc: 0, sg: 0, ag: 0, aw: 0, form: [] }; }
@@ -137,6 +140,7 @@ const Reg = (() => {
   function sortIds(comp, ids, by) {
     if (!by) return ids;
     let order;
+    if (by.rating) return ids.slice().sort((x, y) => E.ovr(T(y)) - E.ovr(T(x)));
     if (by.campaign) order = campaignRows(comp, by.campaign).map(r => r.id);
     else if (by.phase != null) {
       const st = comp.stages[by.phase];
@@ -146,17 +150,38 @@ const Reg = (() => {
     return ids.slice().sort((x, y) => pos(x) - pos(y));
   }
   // 1ºs de todos os grupos (ordenados por campanha), depois 2ºs, ...
-  function rankedPerGroup(comp, i, a, b) {
+  // opts.groups: só esses grupos; opts.fair: em grupos maiores, descarta os jogos contra os últimos (regra da UEFA para comparar grupos de tamanhos diferentes)
+  function rankedPerGroup(comp, i, a, b, opts = {}) {
     const st = comp.stages[i];
     const out = [];
+    const gis = opts.groups || st.groups.map((_, gi) => gi);
+    const minSize = Math.min(...gis.map(gi => st.groups[gi].teams.length));
     for (let p = a; p <= b; p++) {
-      const level = st.groups.map((g, gi) => rank(comp, i, gi)[p - 1]).filter(Boolean);
+      const level = gis.map(gi => {
+        const full = rank(comp, i, gi);
+        const r = full[p - 1];
+        if (!r || !opts.fair || full.length <= minSize) return r;
+        const keep = new Set(full.slice(0, minSize).map(x => x.id));
+        const ms = matchesOf(st).filter(m => keep.has(m.h) && keep.has(m.a));
+        return computeRows(full.slice(0, minSize).map(x => x.id), ms)[r.id] || r;
+      }).filter(Boolean);
       level.sort((x, y) => y.p - x.p || y.sg - x.sg || y.gp - x.gp || y.v - x.v);
       out.push(...level.map(r => r.id));
     }
     return out;
   }
 
+  // eliminatórias em que a sede joga mas já está garantida: no grupo dela, passam a sede e o melhor dos outros
+  function hostsQual(comp, phase) {
+    setHosts(comp);
+    const st = comp.stages[phase], out = [];
+    st.groups.forEach((g, gi) => {
+      const r = rank(comp, phase, gi).map(x => x.id);
+      const hs = r.filter(id => HOSTS.has(id));
+      out.push(...hs, ...r.filter(id => !HOSTS.has(id)).slice(0, Math.max(0, 2 - hs.length)));
+    });
+    return out;
+  }
   function resolve(comp, src) {
     if (!src) return [];
     let ids = [];
@@ -170,7 +195,10 @@ const Reg = (() => {
       const st = comp.stages[src.phase];
       if (!st) return [];
       if (src.pos) ids = rank(comp, src.phase, src.group || 0).slice(src.pos[0] - 1, src.pos[1]).map(r => r.id);
-      else if (src.perGroup) ids = rankedPerGroup(comp, src.phase, src.perGroup[0], src.perGroup[1]);
+      else if (src.perGroup) ids = rankedPerGroup(comp, src.phase, src.perGroup[0], src.perGroup[1], { groups: src.groups, fair: src.fair });
+      else if (src.entrants) ids = (st.entrants || []).slice();
+      else if (src.stored) ids = (st[src.stored] || []).slice();
+      else if (src.hostsQual) ids = hostsQual(comp, src.phase);
       else if (src.winner) ids = [koWinner(st)].filter(Boolean);
       else if (src.runnerUp) {
         const last = st.rounds[st.rounds.length - 1];
@@ -190,7 +218,10 @@ const Reg = (() => {
         ids = rd ? rd.ties.map(t => t.w).filter(Boolean) : [];
       }
     }
+    if (src.noHosts) { setHosts(comp); ids = ids.filter(id => !HOSTS.has(id)); }
+    if (src.minus) { const out = new Set(resolve(comp, src.minus)); ids = ids.filter(id => !out.has(id)); }
     if (src.sortBy) ids = sortIds(comp, ids, src.sortBy);
+    if (src.take) ids = ids.slice(src.take[0], src.take[1]);
     return ids;
   }
 
@@ -199,19 +230,46 @@ const Reg = (() => {
     const spec = comp.spec[i];
     const st = { type: 'rr', name: spec.name, groups: [], rounds: [] };
     let entr = resolve(comp, spec.teams);
+    if (spec.dedupe) entr = [...new Set(entr)];
     const G = spec.groups;
+    setHosts(comp);
     if (!G) st.groups = [{ name: spec.groupName || spec.name, teams: entr }];
+    else if (G.method === 'multi') {
+      // vários sorteios por potes na mesma fase (ex.: Ligas A, B e C da Liga das Nações)
+      G.parts.forEach(part => {
+        const ids = resolve(comp, part.teams), n = part.count;
+        const groups = Array.from({ length: n }, (_, k) => ({ name: `${part.prefix}${k + 1}`, teams: [] }));
+        for (let p = 0; p * n < ids.length; p++) shuffle(ids.slice(p * n, (p + 1) * n)).forEach((id, k) => groups[k].teams.push(id));
+        st.groups.push(...groups);
+      });
+    }
     else if (G.method === 'roles') st.groups = G.roles.map((role, k) => ({ name: (G.names || [])[k] || role, teams: (comp.entries[role] || []).slice() }));
     else if (G.method === 'pattern') st.groups = G.pattern.map((idx, k) => ({ name: (G.names || [])[k] || `Grupo ${'ABCDEFGHIJKLMNOP'[k]}`, teams: idx.map(x => entr[x]).filter(Boolean) }));
     else {
       // potes pela ordem de entrada (ranking/colocação); cada grupo recebe um clube de cada pote
       const n = G.count;
       if (G.byRating) entr = entr.slice().sort((x, y) => E.ovr(T(y)) - E.ovr(T(x)));
+      let fixedCount = G.fixedCount || 0;
+      if (G.hostsFirst) { const hs = entr.filter(id => HOSTS.has(id)); entr = [...hs, ...entr.filter(id => !HOSTS.has(id))]; fixedCount = Math.min(hs.length, n); }
+      const separate = G.separate && HOSTS.size > 1;
       const groups = Array.from({ length: n }, (_, k) => ({ name: (G.names || [])[k] || `Grupo ${'ABCDEFGHIJKLMNOP'[k]}`, teams: [] }));
+      for (let tries = 0; tries < 300; tries++) {
+      groups.forEach(g => { g.teams = []; });
       for (let p = 0; p * n < entr.length; p++) {
         let pot = entr.slice(p * n, (p + 1) * n);
+        if (p === 0 && fixedCount) {
+          // sedes ficam nos primeiros grupos (A, B…); o resto do pote é sorteado
+          const fixed = pot.slice(0, fixedCount), rest = shuffle(pot.slice(fixedCount));
+          const slots = shuffle(Array.from({ length: n - fixed.length }, (_, k) => fixed.length + k));
+          fixed.forEach((id, k) => groups[k].teams.push(id));
+          rest.forEach((id, k) => groups[slots[k]].teams.push(id));
+          continue;
+        }
         if (!(p === 0 && G.fixedFirst)) pot = shuffle(pot);
         pot.forEach((id, k) => groups[k].teams.push(id));
+      }
+      // sedes em grupos diferentes (sorteio refeito se preciso)
+      if (!separate || groups.every(g => g.teams.filter(id => HOSTS.has(id)).length <= 1)) break;
       }
       st.groups = groups;
     }
@@ -226,6 +284,8 @@ const Reg = (() => {
     } else {
       const per = st.groups.map((g, gi) => {
         const legs = spec.legsEach ? spec.legsEach[gi] : spec.legs;
+        const sched = spec.schedEach ? spec.schedEach[gi] : spec.sched;
+        if (sched) return specialRounds(g.teams, sched);
         let rds = E.roundRobin(g.teams, legs >= 2 ? 2 : 1);
         if (legs === 3) rds = rds.concat(E.roundRobin(g.teams, 1));
         if (legs === 4) rds = rds.concat(E.roundRobin(g.teams, 2));
@@ -242,6 +302,13 @@ const Reg = (() => {
         });
       }
     }
+    if (spec.neutral) {
+      // torneio em sede: campo neutro, a não ser que uma das sedes jogue (aí ela é a mandante)
+      st.rounds.flat().forEach(m => {
+        if (HOSTS.has(m.a) && !HOSTS.has(m.h)) { const x = m.h; m.h = m.a; m.a = x; }
+        m.neutral = !HOSTS.has(m.h);
+      });
+    }
     if (spec.carry) {
       const rowsArr = rank(comp, spec.carry.phase, 0);
       const all = {};
@@ -251,6 +318,68 @@ const Reg = (() => {
       void rowsArr;
     }
     return st;
+  }
+  // calendários especiais dentro de um grupo
+  //  'drop'  : turno único sem uma rodada (6 clubes, 4 jogos cada, 2 em casa) — Liga das Nações da Concacaf
+  //  'bands' : 8 clubes em 4 faixas de 2; cada um pega um adversário de cada faixa (4 jogos) — Copa Ouro 2027
+  //  'potPairs': 6 clubes em 3 pares de pote; ida e volta contra o par, turno único contra os outros 4 — Liga das Nações 2028+
+  function specialRounds(ids, kind) {
+    const n = ids.length;
+    let games = [], R = 0;
+    if (kind === 'drop') {
+      const rr = E.roundRobin(ids, 1);
+      const keep = rr.slice(0, n % 2 ? rr.length : rr.length - 1);
+      games = balance(keep.flat().map(m => [m.h, m.a]), ids);
+      R = keep.length;
+    } else if (kind === 'bands') {
+      const B = Math.floor(n / 2);
+      for (let b = 0; b < B; b++) games.push([ids[2 * b], ids[2 * b + 1]]);
+      for (let b = 0; b < B; b++) for (let c = b + 1; c < B; c++) {
+        const f = (b + c) % 2;
+        games.push([ids[2 * b], ids[2 * c + f]], [ids[2 * b + 1], ids[2 * c + 1 - f]]);
+      }
+      games = balance(games, ids); R = B;
+    } else if (kind === 'potPairs') {
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+        if (Math.floor(a / 2) === Math.floor(b / 2)) games.push([ids[a], ids[b]], [ids[b], ids[a]]);
+        else games.push([ids[a], ids[b]]);
+      }
+      const single = games.filter(g => Math.floor(ids.indexOf(g[0]) / 2) !== Math.floor(ids.indexOf(g[1]) / 2));
+      const bal = balance(single, ids);
+      games = games.filter(g => Math.floor(ids.indexOf(g[0]) / 2) === Math.floor(ids.indexOf(g[1]) / 2)).concat(bal);
+      R = 6;
+    }
+    for (let t = 0; t < 200; t++) {
+      const rds = E.matchdays(games, ids, R);
+      if (rds) return shuffle(rds).map(rd => rd.map(([h, a]) => E.newMatch(h, a)));
+    }
+    return E.roundRobin(ids, 1);
+  }
+  // orienta os jogos para cada clube ter o mesmo número de jogos em casa e fora (circuito de Euler)
+  function balance(games, ids) {
+    const adj = {}; ids.forEach(id => adj[id] = []);
+    games.forEach((g, k) => { adj[g[0]].push(k); adj[g[1]].push(k); });
+    const used = new Array(games.length).fill(false), out = [];
+    // grau ímpar: liga a um vértice fantasma
+    const odd = ids.filter(id => adj[id].length % 2);
+    const ext = games.slice();
+    odd.forEach(id => { ext.push([id, '__x']); adj[id].push(ext.length - 1); (adj.__x = adj.__x || []).push(ext.length - 1); });
+    const usedE = new Array(ext.length).fill(false);
+    const start0 = shuffle(Object.keys(adj));
+    for (const s0 of start0) {
+      const stack = [s0];
+      while (stack.length) {
+        const v = stack[stack.length - 1];
+        const k = adj[v].find(e => !usedE[e]);
+        if (k == null) { stack.pop(); continue; }
+        usedE[k] = true;
+        const [a, b] = ext[k], w = a === v ? b : a;
+        if (k < games.length) out.push([v, w]);
+        stack.push(w);
+      }
+    }
+    void used;
+    return out;
   }
   // só jogos contra o grupo parceiro (A×B, C×D...), turno único; o grupo da esquerda tem o mando extra quando o número é ímpar
   function crossRounds(groups) {
@@ -354,7 +483,12 @@ const Reg = (() => {
   }
   function mkTie(x, y, cfg, seedOf) {
     if (y == null) return E.newTie(x, null, 1);
-    const [better, worse] = seedOf(x) <= seedOf(y) ? [x, y] : [y, x];
+    let [better, worse] = seedOf(x) <= seedOf(y) ? [x, y] : [y, x];
+    if (cfg.neutral && cfg.legs !== 2 && !cfg.bo3 && (HOSTS.has(x) || HOSTS.has(y))) {
+      const host = HOSTS.has(x) ? x : y, other = host === x ? y : x;
+      const rule = { et: cfg.et, pens: cfg.pens, better: cfg.better ? better : null, bo3: false };
+      return E.newTie(host, other, 1, HOSTS.has(other) && false, rule);
+    }
     const rule = { et: cfg.et, pens: cfg.pens, better: cfg.better ? better : null, bo3: cfg.bo3 };
     if (cfg.bo3) return E.newTie(better, worse, 3, false, rule);
     if (cfg.legs === 2) return E.newTie(worse, better, 2, false, rule);
@@ -371,8 +505,75 @@ const Reg = (() => {
     if (spec.roundNames && spec.roundNames[roundIdx]) return spec.roundNames[roundIdx];
     return E.roundName(nTeams);
   }
+  // grupo de cada clube numa fase de grupos
+  function groupOf(comp, phase) {
+    const g = {}; (comp.stages[phase].groups || []).forEach((gr, gi) => gr.teams.forEach(id => { g[id] = gi; })); return g;
+  }
+  // sorteio: primeira metade (cabeças) contra a segunda, sem repetir confronto do mesmo grupo
+  function drawNoSame(A, B, gOf) {
+    for (let t = 0; t < 500; t++) {
+      const P = shuffle(B);
+      if (A.every((x, k) => gOf[x] == null || gOf[x] !== gOf[P[k]])) return A.map((x, k) => [x, P[k]]);
+    }
+    return A.map((x, k) => [x, B[k]]);
+  }
+  // 24 seleções (6 grupos): oitavas no modelo da Euro 2024, com os 4 melhores 3ºs encaixados pelos grupos de origem
+  function thirds24(comp, phase) {
+    const st = comp.stages[phase];
+    const W = [], R = [], Th = [];
+    st.groups.forEach((g, gi) => { const r = rank(comp, phase, gi); W[gi] = r[0].id; R[gi] = r[1].id; Th.push({ id: r[2].id, g: gi }); });
+    const best = rankedPerGroup(comp, phase, 3, 3).slice(0, 4);
+    const thirds = Th.filter(t => best.includes(t.id));
+    // vagas dos 3ºs: 1ºB × 3º A/D/E/F, 1ºC × 3º D/E/F, 1ºF × 3º A/B/C, 1ºE × 3º A/B/C/D
+    const slots = [{ w: 1, ok: [0, 3, 4, 5] }, { w: 2, ok: [3, 4, 5] }, { w: 5, ok: [0, 1, 2] }, { w: 4, ok: [0, 1, 2, 3] }];
+    const pick = {};
+    const solve = k => {
+      if (k === slots.length) return true;
+      for (const t of shuffle(thirds)) {
+        if (Object.values(pick).includes(t.id) || !slots[k].ok.includes(t.g)) continue;
+        pick[k] = t.id; if (solve(k + 1)) return true; delete pick[k];
+      }
+      return false;
+    };
+    if (!solve(0)) { const rest = thirds.map(t => t.id); slots.forEach((s, k) => { pick[k] = rest[k]; }); }
+    // ordem pensada para as quartas saírem de jogos vizinhos (como na Euro)
+    const pairs = [[W[1], pick[0]], [W[0], R[2]], [W[5], pick[2]], [R[3], R[4]], [W[2], pick[1]], [R[0], R[1]], [W[4], pick[3]], [W[3], R[5]]];
+    return { pairs, entrants: [...W, ...R, ...best] };
+  }
   function buildKO(comp, i) {
     const spec = comp.spec[i];
+    setHosts(comp);
+    if (spec.pairing === 'euroPO') {
+      // 12 primeiros + 8 melhores 2ºs classificam; até `reserve` sedes que ficaram de fora entram pela vaga reservada;
+      // as vagas que sobram (4 menos as reservadas usadas) vão para a repescagem
+      const q = spec.teams.phase, cfgP = spec.euroPO;
+      const D = [...rankedPerGroup(comp, q, 1, 1), ...rankedPerGroup(comp, q, 2, 2, { fair: true }).slice(0, cfgP.runners)];
+      const order = rankedPerGroup(comp, q, 1, 6, { fair: true });
+      const U = order.filter(id => HOSTS.has(id) && !D.includes(id)).slice(0, cfgP.reserve);
+      const P = cfgP.places - U.length;
+      const pool = rankedPerGroup(comp, q, 2, 6, { fair: true }).filter(id => !D.includes(id) && !U.includes(id));
+      const N = P === cfgP.places ? 2 * P : 4 * P;
+      const entrants = pool.slice(0, N);
+      let pairs = [];
+      if (P === cfgP.places) {
+        for (let k = 0; k < P; k++) pairs.push([entrants[k], entrants[N - 1 - k]]);
+        Object.assign(spec, { legs: 2, maxRounds: 1, roundNames: ['Repescagem'], roundsCfg: null });
+      } else {
+        // caminhos de 4: semifinal (1 × 4, 2 × 3) e final em jogo único, na casa do mais bem colocado
+        for (let k = 0; k < P; k++) pairs.push([entrants[k], entrants[4 * P - 1 - k]], [entrants[P + k], entrants[3 * P - 1 - k]]);
+        Object.assign(spec, { legs: 1, neutral: false, maxRounds: 2, roundNames: ['Semifinal da repescagem', 'Final da repescagem'], roundsCfg: null });
+      }
+      const seedOf = seedFn(comp, spec, entrants);
+      const cfg = roundCfg(spec, 0, false);
+      return { type: 'knockout', name: spec.name, entrants, direct: [...D, ...U], directQ: D, reserved: U, paths: P,
+        rounds: [{ name: roundLabel(spec, N, 0), ties: pairs.map(([x, y]) => mkTie(x, y, cfg, seedOf)) }] };
+    }
+    if (spec.pairing === 'thirds24') {
+      const { pairs, entrants } = thirds24(comp, spec.teams.phase);
+      const seedOf = seedFn(comp, spec, entrants);
+      const cfg = roundCfg(spec, 0, false);
+      return { type: 'knockout', name: spec.name, entrants, rounds: [{ name: roundLabel(spec, 16, 0), ties: pairs.map(([x, y]) => mkTie(x, y, cfg, seedOf)) }] };
+    }
     if (spec.autoIfSame) {
       const [a, b] = spec.autoIfSame.map(s => resolve(comp, s)[0]);
       if (a && a === b) return { type: 'knockout', name: spec.name, auto: true, winner: a, rounds: [] };
@@ -404,6 +605,11 @@ const Reg = (() => {
     let pairs = [];
     const N = entr.length;
     if (spec.pairing === 'pairs') pairs = spec.pairs.map(([x, y]) => [entr[x], entr[y]]);
+    else if (spec.pairing === 'drawNoSame') {
+      const h = N / 2;
+      pairs = drawNoSame(entr.slice(0, h), entr.slice(h), groupOf(comp, spec.groupPhase ?? 0));
+      if (spec.seedPairs) { const order = E.bracketOrder(h); pairs = order.map(s => pairs[s - 1]); }
+    }
     else if (spec.pairing === 'wr') {
       // vencedores x segundos colocados por sorteio; chave seguinte pela ordem dos vencedores
       const h = N / 2, W = entr.slice(0, h), Rr = shuffle(entr.slice(h));
@@ -432,6 +638,7 @@ const Reg = (() => {
   }
   function nextKORound(comp, i) {
     const spec = comp.spec[i], st = comp.stages[i];
+    setHosts(comp);
     const last = st.rounds[st.rounds.length - 1];
     const r = st.rounds.length;
     const seedOf = spec.seedBy ? seedFn(comp, spec, st.entrants || []) : seedFn(comp, spec, st.entrants || []);
@@ -442,6 +649,7 @@ const Reg = (() => {
       pairs = E.bracketOrder(D).map(s => raw[s - 1]);
     } else {
       let winners = last.ties.map(t => t.w);
+      if (spec.drawAt && spec.drawAt.includes(r)) winners = shuffle(winners);   // sorteio aberto (ex.: semifinais da Liga das Nações)
       const reseed = spec.reseed || (spec.reseedAt != null && r === spec.reseedAt);
       if (reseed) {
         winners = winners.slice().sort((x, y) => seedOf(x) - seedOf(y));
@@ -493,15 +701,24 @@ const Reg = (() => {
   }
 
   function create(tpl, entries, name) {
+    const built = tpl.build ? tpl.build(entries) : null;
     const comp = {
       id: uid(), name: name || tpl.name, reg: true, template: tpl.id, format: tpl.icon || 'league', crest: tpl.crest || null,
-      created: Date.now(), spec: clone(tpl.phases), champSpec: clone(tpl.champion || { phase: 0 }), entries: clone(entries),
-      stages: tpl.phases.map(() => null), champion: null
+      created: Date.now(), spec: clone(built ? built.phases : tpl.phases), champSpec: clone((built && built.champion) || tpl.champion || { phase: 0 }), entries: clone(entries),
+      outcomesSpec: built && built.outcomes ? clone(built.outcomes) : undefined, rulesExtra: built && built.rules ? built.rules : undefined,
+      stages: (built ? built.phases : tpl.phases).map(() => null), champion: null
     };
     advance(comp);
     return comp;
   }
 
+  // ranking geral aproximado da UEFA: liga (pela ordem dos grupos), posição no grupo, pontos, saldo, gols
+  function overallOrder(comp, ids, leagueOfGroup) {
+    const st = comp.stages[0], key = {};
+    st.groups.forEach((g, gi) => rank(comp, 0, gi).forEach((r, p) => { key[r.id] = [leagueOfGroup[gi], p, -r.p, -r.sg, -r.gp]; }));
+    const cmp = (x, y) => { const a = key[x] || [9], b = key[y] || [9]; for (let k = 0; k < 5; k++) if ((a[k] ?? 0) !== (b[k] ?? 0)) return (a[k] ?? 0) - (b[k] ?? 0); return 0; };
+    return ids.slice().sort(cmp);
+  }
   // dependências transitivas
   function dependents(comp, si) {
     const out = new Set();
@@ -639,7 +856,7 @@ const Reg = (() => {
   }
   // resultados de destaque (acesso, rebaixados, vagas...) quando já definidos
   function outcomes(comp, tpl) {
-    return (tpl.outcomes || []).map(o => {
+    return (comp.outcomesSpec || tpl.outcomes || []).map(o => {
       const deps = new Set();
       const walk = s => { if (!s) return; if (s.phase != null) deps.add(s.phase); (s.list || s.uniqueFill || []).forEach(walk); if (s.from) walk(s.from); };
       walk(o.src);
@@ -648,5 +865,5 @@ const Reg = (() => {
     }).filter(o => o.ids && o.ids.length);
   }
 
-  return { resolve, awaiting, confirm, finished, create, advance, step, simulateAll, playOne, clearResults, redraw, progress, rank, stageDone, wouldDiscard, invalidate, currentStage, currentLabel, outcomes, dependents };
+  return { overallOrder, resolve, awaiting, confirm, finished, create, advance, step, simulateAll, playOne, clearResults, redraw, progress, rank, stageDone, wouldDiscard, invalidate, currentStage, currentLabel, outcomes, dependents };
 })();

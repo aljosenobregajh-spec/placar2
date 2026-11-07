@@ -564,32 +564,55 @@ function startTplWizard(id) {
   UI.wizard = { mode: 'tpl', template: id, name: tpl.name, entries: JSON.parse(JSON.stringify(tpl.entries)), picking: null, filter: 'ALL', search: '' };
   Modal.open(wizardHTML, 'wide');
 }
+// filtro de times: 'ALL', 'CLUBS', 'NATIONS' ou o código de uma liga/confederação
+const inFilter = (t, f) => f === 'ALL' || (f === 'CLUBS' ? !t.nat : f === 'NATIONS' ? !!t.nat : t.league === f);
 function leagueSelect(scope, value, extra = '') {
   const leagues = Object.keys(LEAGUES).filter(k => Teams.list.some(t => t.league === k));
+  const opt = k => `<option value="${k}" ${value === k ? 'selected' : ''}>${esc(LEAGUES[k])} (${Teams.list.filter(t => t.league === k).length})</option>`;
+  const nClubs = Teams.list.filter(t => !t.nat).length, nNat = Teams.list.length - nClubs;
   return `<select class="lg-select" data-inp="leagueSel" data-scope="${scope}" aria-label="Filtrar por liga">
-    <option value="ALL" ${value === 'ALL' ? 'selected' : ''}>Todas as ligas</option>${extra}
-    ${leagues.map(k => `<option value="${k}" ${value === k ? 'selected' : ''}>${esc(LEAGUES[k])} (${Teams.list.filter(t => t.league === k).length})</option>`).join('')}
+    <option value="ALL" ${value === 'ALL' ? 'selected' : ''}>Todos os times</option>${extra}
+    <option value="CLUBS" ${value === 'CLUBS' ? 'selected' : ''}>Todos os clubes (${nClubs})</option>
+    <option value="NATIONS" ${value === 'NATIONS' ? 'selected' : ''}>Todas as seleções (${nNat})</option>
+    <optgroup label="Clubes por liga">${leagues.filter(k => !k.startsWith('SEL-')).map(opt).join('')}</optgroup>
+    <optgroup label="Seleções por confederação">${leagues.filter(k => k.startsWith('SEL-')).map(opt).join('')}</optgroup>
   </select>`;
 }
 function tplWizardHTML() {
   const W = UI.wizard, tpl = TEMPLATES.find(t => t.id === W.template);
   const head = t => `<div class="modal-head"><h3>${t}</h3><button class="close" data-act="close" aria-label="Fechar">${I.x}</button></div>`;
   const used = new Set(Object.values(W.entries).flat());
+  if (W.picking && W.picking.addHost) {
+    const hc = tpl.hostCfg, pool = [].concat(hc.pool).flatMap(r => W.entries[r]);
+    const q = W.search.trim().toLowerCase();
+    const list = pool.map(id => Teams.get(id)).filter(t => t && !W.entries.hosts.includes(t.id) && (!q || t.name.toLowerCase().includes(q))).sort((a, b) => ovr(b) - ovr(a));
+    return head('Escolher sede') + `
+      <p class="hint" style="margin:-6px 0 14px">${hc.mode === 'direct' ? 'A sede sai das eliminatórias e entra direto na fase final.' : W.entries.qual ? 'A sede continua nas eliminatórias, mas tem a vaga garantida; na fase final joga em casa.' : 'A sede joga seus jogos em casa; os outros jogos são em campo neutro.'}</p>
+      <div class="toolbar"><input class="search" type="text" data-inp="wizSearch" placeholder="Buscar seleção" value="${esc(W.search)}" style="flex:1"></div>
+      <div class="picker-grid">${list.map(t => `<button class="pick-team" data-act="tplHostPick" data-id="${t.id}">${crest(t, 26)}<span>${esc(t.name)}</span><span class="o">${ovr(t)}</span></button>`).join('')}</div>
+      <div class="modal-foot"><button class="btn btn-ghost" data-act="tplCancelPick">Voltar</button></div>`;
+  }
   if (W.picking) {
     const cur = W.entries[W.picking.role][W.picking.i];
     const q = W.search.trim().toLowerCase();
-    const list = Teams.list.filter(t => (t.id === cur || !used.has(t.id)) && (W.filter === 'ALL' || t.league === W.filter) && (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q)))
+    const list = Teams.list.filter(t => (t.id === cur || !used.has(t.id)) && inFilter(t, W.filter) && (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q)))
       .sort((a, b) => ovr(b) - ovr(a));
     return head(`Trocar ${esc(nameOf(cur))}`) + `
       <div class="toolbar">${leagueSelect('wiz', W.filter)}<input class="search" type="text" data-inp="wizSearch" placeholder="Buscar clube" value="${esc(W.search)}"></div>
       <div class="picker-grid">${list.map(t => `<button class="pick-team ${t.id === cur ? 'on' : ''}" data-act="tplPick" data-id="${t.id}">${crest(t, 26)}<span>${esc(t.name)}</span><span class="o">${ovr(t)}</span></button>`).join('') || '<p class="hint">Nenhum clube disponível.</p>'}</div>
       <div class="modal-foot"><button class="btn btn-ghost" data-act="tplCancelPick">Voltar</button><span class="hint">Clubes que já estão na competição não aparecem.</span></div>`;
   }
-  const roles = Object.keys(W.entries);
+  const hc = tpl.hostCfg;
+  const roles = Object.keys(W.entries).filter(r => !(hc && r === 'hosts'));
+  const hostsBox = hc ? `<div class="section-head" style="margin:18px 0 10px"><h4 style="font-size:14px">${esc(tpl.roles.hosts)}</h4><span class="aside">${W.entries.hosts.length} de até ${hc.max}</span></div>
+    <div class="picker-grid">${W.entries.hosts.map(id => `<button class="pick-team slot host" data-act="tplHostRemove" data-id="${id}" title="Remover sede">${crest(id, 26)}<span>${esc(nameOf(id))}</span><span class="o">${I.x}</span></button>`).join('')}
+      ${W.entries.hosts.length < hc.max ? `<button class="pick-team slot add" data-act="tplHostAdd">${I.plus}<span>Adicionar sede</span></button>` : ''}</div>
+    ${tpl.build && (tpl.build(W.entries).rules || []).length ? `<p class="hint" style="margin-top:8px">${tpl.build(W.entries).rules.join(' ')}</p>` : ''}` : '';
   return head(esc(tpl.name)) + `
     <div class="field"><label>Nome</label><input type="text" data-inp="wizName" value="${esc(W.name)}" maxlength="60"></div>
     <div class="reg-box"><b>Regulamento</b><ul>${tpl.rules.slice(0, 3).map(r => `<li>${esc(r)}</li>`).join('')}</ul><span class="hint">O regulamento completo e as fontes ficam na aba Regulamento da competição.</span></div>
-    ${roles.map(role => `<div class="section-head" style="margin:18px 0 10px"><h4 style="font-size:14px">${esc((tpl.roles || {})[role] || 'Clubes')}</h4><span class="aside">${W.entries[role].length} clubes · clique para trocar</span></div>
+    ${hostsBox}
+    ${roles.map(role => `<div class="section-head" style="margin:18px 0 10px"><h4 style="font-size:14px">${esc((tpl.roles || {})[role] || 'Clubes')}</h4><span class="aside">${W.entries[role].length} ${W.entries[role].every(id => (Teams.get(id) || {}).nat) ? 'seleções' : 'clubes'} · clique para trocar</span></div>
       <div class="picker-grid">${W.entries[role].map((id, i) => `<button class="pick-team slot" data-act="tplSlot" data-role="${role}" data-i="${i}">${crest(id, 26)}<span>${esc(nameOf(id))}</span><span class="o">${Teams.get(id) ? ovr(Teams.get(id)) : '–'}</span></button>`).join('')}</div>`).join('')}
     <div class="modal-foot">
       <button class="btn btn-ghost" data-act="tplReset">Restaurar clubes originais</button>
@@ -663,7 +686,7 @@ function wizardHTML() {
   const err = Engine.validate(W.format, W.teams, W.cfg);
   const q = W.search.trim().toLowerCase();
   const list = Teams.list.filter(t =>
-    (W.filter === 'ALL' || (W.filter === 'SEL' ? W.teams.includes(t.id) : t.league === W.filter)) &&
+    (W.filter === 'SEL' ? W.teams.includes(t.id) : inFilter(t, W.filter)) &&
     (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q))
   ).sort((a, b) => ovr(b) - ovr(a));
   return head('Escolha os clubes') + steps + `
@@ -745,7 +768,7 @@ function tableHTML(c, ids, matches, zones = []) {
 function rowsTableHTML(rows, zones = [], legend = true) {
   const zoneOf = pos => zones.find(z => pos >= z.from && pos <= z.to);
   return `<div class="table-wrap"><table class="tbl">
-    <thead><tr><th>#</th><th class="l">Clube</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th><th>Últimos</th></tr></thead>
+    <thead><tr><th>#</th><th class="l">${rows.length && rows.every(r => (Teams.get(r.id) || {}).nat) ? 'Seleção' : 'Clube'}</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th><th>Últimos</th></tr></thead>
     <tbody>${rows.map((r, i) => {
       const z = zoneOf(i + 1);
       return `<tr><td class="pos" style="${z ? `--zc:${z.color}` : ''}">${i + 1}</td>
@@ -991,7 +1014,7 @@ function probSetup(c) {
     const tpl = tplOf(c);
     // destaques que só repetem posições da tabela principal (ex.: rebaixados = zona de rebaixamento) não viram coluna
     const onlyMain = src => { const ph = new Set(); const walk = x => { if (!x) return; if (x.phase != null) { ph.add(x.phase); if (!x.pos) ph.add(-1); } (x.list || x.uniqueFill || []).forEach(walk); if (x.from) walk(x.from); }; walk(src); return ph.size === 1 && ph.has(main); };
-    (tpl && tpl.outcomes || []).forEach(o => { if (!onlyMain(o.src) && !cols.some(x => x.label === o.label)) cols.push({ key: 'o:' + o.label, label: o.label, color: o.color || ZONE_COLORS.up }); });
+    (c.outcomesSpec || (tpl && tpl.outcomes) || []).forEach(o => { if (!onlyMain(o.src) && !cols.some(x => x.label === o.label)) cols.push({ key: 'o:' + o.label, label: o.label, color: o.color || ZONE_COLORS.up }); });
     const pattern = spec.groups && spec.groups.method === 'pattern';
     rankFn = x => {
       const out = [];
@@ -1090,7 +1113,7 @@ function probHTML(c) {
   const hasPos = P.rows.some(r => r.pos != null);
   return head + stale + `<p class="hint" style="margin-bottom:10px">${P.n.toLocaleString('pt-BR')} simulações · calculado com ${P.played} jogo(s) disputados · ${new Date(P.at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
     <div class="table-wrap"><table class="tbl prob">
-      <thead><tr><th class="l">Clube</th>${P.cols.map(col => `<th><span class="ph" style="--zc:${col.color}">${esc(col.label)}</span></th>`).join('')}${hasPos ? '<th>Pos. média</th>' : ''}</tr></thead>
+      <thead><tr><th class="l">${P.rows.length && P.rows.every(r => (Teams.get(r.id) || {}).nat) ? 'Seleção' : 'Clube'}</th>${P.cols.map(col => `<th><span class="ph" style="--zc:${col.color}">${esc(col.label)}</span></th>`).join('')}${hasPos ? '<th>Pos. média</th>' : ''}</tr></thead>
       <tbody>${P.rows.map(r => `<tr><td class="l"><span class="team">${crest(r.id, 22)}${esc(nameOf(r.id))}</span></td>
         ${P.cols.map(col => { const v = r.vals[col.key] || 0; return `<td class="pc" style="--pv:${Math.round(v * 100)}%;--zc:${col.color}">${pct(v)}</td>`; }).join('')}
         ${hasPos ? `<td>${r.pos != null ? r.pos.toFixed(1).replace('.', ',') : '–'}</td>` : ''}</tr>`).join('')}</tbody>
@@ -1101,7 +1124,7 @@ function rulesHTML(c) {
   const t = tplOf(c);
   if (!t) return `<div class="panel empty"><h3>Regulamento indisponível</h3></div>`;
   return `<div class="panel rules">
-    <h3>Como funciona</h3><ul>${t.rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+    ${c.rulesExtra ? `<h3>Esta edição</h3><ul>${c.rulesExtra.map(r => `<li>${esc(r)}</li>`).join('')}</ul><h3 style="margin-top:22px">Como funciona</h3>` : '<h3>Como funciona</h3>'}<ul>${t.rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
     ${t.notes && t.notes.length ? `<h3 style="margin-top:22px">Simplificações no simulador</h3><ul>${t.notes.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
     ${t.sources && t.sources.length ? `<h3 style="margin-top:22px">Fontes</h3><ul>${t.sources.map(s => `<li><a href="${esc(s.u)}" target="_blank" rel="noopener">${esc(s.t)}</a></li>`).join('')}</ul>` : ''}
   </div>`;
@@ -1158,6 +1181,8 @@ Pages.comp = id => {
     </div>
     ${c.champion ? `<div class="champion">${crest(c.champion, 64)}<div><small>Campeão</small><h2>${esc(nameOf(c.champion))}</h2></div><span style="margin-left:auto;width:42px;height:42px;display:block">${I.trophy}</span></div>` : ''}
     ${c.reg ? outcomesHTML(c) : ''}
+    ${c.reg && (tplOf(c) || {}).nextSeason && Reg.finished(c) ? `<div class="callout next-season"><div><b>Temporada encerrada</b><span>${c.nextSeasonId && Store.d.comps.some(x => x.id === c.nextSeasonId) ? 'A próxima edição já foi criada com os acessos e descensos.' : 'Crie a próxima edição: as ligas já saem montadas com quem subiu e quem caiu, e esta temporada continua salva.'}</span></div>
+      ${c.nextSeasonId && Store.d.comps.some(x => x.id === c.nextSeasonId) ? `<a class="btn btn-dark btn-sm" href="#/c/${c.nextSeasonId}">Abrir próxima temporada</a>` : `<button class="btn btn-lime btn-sm" data-act="nextSeason">Criar próxima temporada</button>`}</div>` : ''}
     ${c.reg && Reg.awaiting(c) >= 0 ? `<div class="callout"><div><b>${esc(c.spec[Reg.awaiting(c)].name)} prontos para começar.</b> Confirme os ${c.spec[Reg.awaiting(c)].confirm.count} clubes que entram nesta fase (${esc(c.spec[Reg.awaiting(c)].confirm.label)}).</div><button class="btn btn-dark btn-sm" data-act="compTab" data-v="p${Reg.awaiting(c)}">Revisar e confirmar</button></div>` : ''}
     <div class="tabs" role="tablist">${compTabs(c).map(([k, l]) => `<button role="tab" class="${S.tab === k ? 'on' : ''}" data-act="compTab" data-v="${k}">${l}</button>`).join('')}</div>
     ${body}
@@ -1203,10 +1228,11 @@ Pages.clubes = () => {
   const S = UI.clubs, set = Store.d.settings;
   const q = S.search.trim().toLowerCase();
   const leagues = ['ALL', ...Object.keys(LEAGUES).filter(k => Teams.list.some(t => t.league === k))];
-  const list = Teams.list.filter(t => (S.filter === 'ALL' || t.league === S.filter) && (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q)))
-    .sort((a, b) => ovr(b) - ovr(a) || b.atk - a.atk);
+  const natView = S.filter === 'NATIONS' || S.filter.startsWith('SEL-');
+  const list = Teams.list.filter(t => inFilter(t, S.filter) && (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q)))
+    .sort((a, b) => (natView ? (a.fifaRank || 999) - (b.fifaRank || 999) : 0) || ovr(b) - ovr(a) || b.atk - a.atk);
   return `<section class="page"><div class="wrap">
-    <div class="page-head"><div><h1>Clubes e ranking</h1><p>Ataque (ATA) e defesa (DEF) de 40 a 99. O OVR é a média dos dois. Um time com ATA alto marca mais; com DEF alto sofre menos.</p></div>
+    <div class="page-head"><div><h1>Clubes, seleções e ranking</h1><p>Ataque (ATA) e defesa (DEF) de 40 a 99. O OVR é a média dos dois. Um time com ATA alto marca mais; com DEF alto sofre menos. As seleções seguem o ranking FIFA de ${RANKING_FIFA_DATA}.</p></div>
       <button class="btn btn-lime" data-act="newTeam">${I.plus} Adicionar clube</button></div>
     <div class="panel">
       <div class="settings-grid">
@@ -1226,12 +1252,12 @@ Pages.clubes = () => {
     </div>
     <div class="toolbar" style="margin-top:26px">
       ${leagueSelect('clubs', S.filter)}
-      <input class="search" type="text" data-inp="clubSearch" placeholder="Buscar clube" value="${esc(S.search)}" style="margin-left:auto">
+      <input class="search" type="text" data-inp="clubSearch" placeholder="Buscar clube ou seleção" value="${esc(S.search)}" style="margin-left:auto">
     </div>
     <div class="table-wrap"><table class="tbl" id="clubTable">
-      <thead><tr><th>#</th><th class="l">Clube</th><th class="l">Liga</th><th>ATA</th><th>DEF</th><th>OVR</th><th></th></tr></thead>
+      <thead><tr><th title="${natView ? 'Posição no ranking FIFA' : ''}">${natView ? 'FIFA' : '#'}</th><th class="l">${natView ? 'Seleção' : 'Time'}</th><th class="l">${natView ? 'Confederação' : 'Liga'}</th><th>ATA</th><th>DEF</th><th>OVR</th><th></th></tr></thead>
       <tbody>${list.map((t, i) => `<tr data-row="${t.id}">
-        <td class="pos">${i + 1}</td>
+        <td class="pos">${natView ? (t.fifaRank || '–') : i + 1}</td>
         <td class="l"><span class="team">${crest(t, 28)}${esc(t.name)}${t.edited ? '<i class="edited" title="Editado por você"></i>' : ''}</span></td>
         <td class="l"><span class="lg-tag">${esc(LEAGUES[t.league] || t.league)}</span></td>
         <td><input class="num" type="number" min="40" max="99" value="${t.atk}" data-inp="rating" data-id="${t.id}" data-k="atk" aria-label="Ataque ${esc(t.name)}"></td>
@@ -1239,7 +1265,7 @@ Pages.clubes = () => {
         <td><span class="ovr-badge" data-ovr="${t.id}">${ovr(t)}</span></td>
         <td><button class="btn btn-ghost btn-sm" data-act="editTeam" data-id="${t.id}">${I.edit} Editar</button></td>
       </tr>`).join('')}</tbody></table></div>
-    <div class="modal-foot"><span class="hint">${list.length} clubes · alterações salvas automaticamente</span>
+    <div class="modal-foot"><span class="hint">${list.length} ${natView ? 'seleções' : 'times'} · alterações salvas automaticamente</span>
       <button class="btn btn-ghost btn-sm btn-danger" data-act="resetTeams">Restaurar todos os clubes ao padrão</button></div>
   </div></section>`;
 };
@@ -1286,17 +1312,18 @@ function teamEditorHTML() {
 
 /* ---------- Seletor de clube (partida) ---------- */
 function openPicker(onPick, current, exclude) {
-  UI.picker = { onPick, current, filter: 'ALL', search: '', exclude: exclude || null };
+  const cur = current && Teams.get(current);
+  UI.picker = { onPick, current, filter: cur && cur.nat ? 'NATIONS' : 'ALL', search: '', exclude: exclude || null };
   Modal.open(pickerHTML, 'wide');
 }
 function pickerHTML() {
   const P = UI.picker;
   const leagues = ['ALL', ...Object.keys(LEAGUES).filter(k => Teams.list.some(t => t.league === k))];
   const q = P.search.trim().toLowerCase();
-  const list = Teams.list.filter(t => (!P.exclude || t.id === P.current || !P.exclude.has(t.id)) && (P.filter === 'ALL' || t.league === P.filter) && (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q)))
+  const list = Teams.list.filter(t => (!P.exclude || t.id === P.current || !P.exclude.has(t.id)) && inFilter(t, P.filter) && (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q)))
     .sort((a, b) => ovr(b) - ovr(a));
-  return `<div class="modal-head"><h3>Escolha o clube</h3><button class="close" data-act="close" aria-label="Fechar">${I.x}</button></div>
-    <div class="toolbar">${leagueSelect('picker', P.filter)}<input class="search" type="text" data-inp="pickerSearch" placeholder="Buscar clube" value="${esc(P.search)}" style="flex:1"></div>
+  return `<div class="modal-head"><h3>Escolha o time</h3><button class="close" data-act="close" aria-label="Fechar">${I.x}</button></div>
+    <div class="toolbar">${leagueSelect('picker', P.filter)}<input class="search" type="text" data-inp="pickerSearch" placeholder="Buscar clube ou seleção" value="${esc(P.search)}" style="flex:1"></div>
     <div class="picker-grid" id="pickerGrid">${pickerGrid(list, P.current)}</div>`;
 }
 const pickerGrid = (list, cur) => list.map(t => `<button class="pick-team ${t.id === cur ? 'on' : ''}" data-act="pickTeam" data-id="${t.id}">${crest(t, 28)}<span>${esc(t.name)}</span><span class="o">${ovr(t)}</span></button>`).join('') || '<p class="hint">Nenhum clube encontrado.</p>';
@@ -1375,6 +1402,19 @@ const Actions = {
     W.filter = cur && Teams.list.some(t => t.league === cur.league && !used.has(t.id)) ? cur.league : 'ALL'; W.search = ''; Modal.refresh(); },
   tplPick: el => { const W = UI.wizard; W.entries[W.picking.role][W.picking.i] = el.dataset.id; W.picking = null; Modal.refresh(); },
   tplCancelPick: () => { UI.wizard.picking = null; Modal.refresh(); },
+  tplHostAdd: () => { UI.wizard.picking = { addHost: true }; UI.wizard.search = ''; Modal.refresh(); },
+  tplHostPick: el => {
+    const W = UI.wizard, hc = TEMPLATES.find(t => t.id === W.template).hostCfg, id = el.dataset.id;
+    W.entries.hosts.push(id);
+    if (hc.mode === 'direct') W.entries[hc.pool] = W.entries[hc.pool].filter(x => x !== id);
+    W.picking = null; Modal.refresh();
+  },
+  tplHostRemove: el => {
+    const W = UI.wizard, hc = TEMPLATES.find(t => t.id === W.template).hostCfg, id = el.dataset.id;
+    W.entries.hosts = W.entries.hosts.filter(x => x !== id);
+    if (hc.mode === 'direct') W.entries[hc.pool].push(id);
+    Modal.refresh();
+  },
   tplReset: () => { const W = UI.wizard; W.entries = JSON.parse(JSON.stringify(TEMPLATES.find(t => t.id === W.template).entries)); Modal.refresh(); },
   tplCreate: () => {
     const W = UI.wizard, tpl = TEMPLATES.find(t => t.id === W.template);
@@ -1485,6 +1525,19 @@ const Actions = {
   },
   openMatch: el => openMatchModal(currentComp(), el.dataset.id, false),
   compUndo: () => undoComp(currentComp()),
+  nextSeason: () => {
+    const c = currentComp(), t = tplOf(c), ns = t && t.nextSeason;
+    if (!ns || !Reg.finished(c)) return;
+    const entries = {};
+    Object.entries(ns.entries).forEach(([k, src]) => { const ids = Reg.resolve(c, src); entries[k] = ns.keepOrder ? ids : Reg.overallOrder(c, ids, ns.leagueOfGroup); });
+    const nt = TEMPLATES.find(x => x.id === ns.template);
+    const name = c.name.replace(/(\d{4})\/(\d{2})/, (_, a) => `${+a + 2}/${String((+a + 3) % 100).padStart(2, '0')}`);
+    const n = Reg.create(nt, entries, name === c.name ? `${c.name} (próxima)` : name);
+    n.prevSeason = c.id; c.nextSeasonId = n.id;
+    Store.d.comps.push(n); Store.save();
+    location.hash = `#/c/${n.id}`;
+    toast(`Nova temporada criada: <b>${esc(n.name)}</b>. A anterior continua salva.`);
+  },
   evoPick: el => { const S = UI.comp[currentComp().id]; const set = new Set(S.evoSel || []); const id = el.dataset.id; if (set.has(id)) set.delete(id); else set.add(id); S.evoSel = [...set]; render(); },
   evoClear: () => { UI.comp[currentComp().id].evoSel = []; render(); },
 
@@ -1594,7 +1647,7 @@ const Inputs = {
   pickerSearch: el => {
     UI.picker.search = el.value;
     const P = UI.picker, q = el.value.trim().toLowerCase();
-    const list = Teams.list.filter(t => (!P.exclude || t.id === P.current || !P.exclude.has(t.id)) && (P.filter === 'ALL' || t.league === P.filter) && (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q))).sort((a, b) => ovr(b) - ovr(a));
+    const list = Teams.list.filter(t => (!P.exclude || t.id === P.current || !P.exclude.has(t.id)) && inFilter(t, P.filter) && (!q || t.name.toLowerCase().includes(q) || t.short.toLowerCase().includes(q))).sort((a, b) => ovr(b) - ovr(a));
     $('#pickerGrid').innerHTML = pickerGrid(list, P.current);
   },
   wizName: el => { UI.wizard.name = el.value; },
