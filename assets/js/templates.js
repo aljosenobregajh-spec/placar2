@@ -99,41 +99,90 @@ add({
 add({
   id: 'nordeste-2026', name: 'Copa do Nordeste 2026', group: 'Brasil', crest: 'assets/logos/lg-copa-do-nordeste.png', icon: 'groups', short: '20 clubes · 4 grupos (A×B, C×D) + mata-mata',
   entries: {
-    gA: I('vitoria', 'asa-al', 'sousa', 'itabaiana', 'fluminense-pi'), gB: I('juazeirense', 'crb', 'botafogo-pb', 'confianca', 'piaui'),
-    gC: I('ceara', 'sport', 'america-rn', 'imperatriz', 'ferroviario-ce'), gD: I('fortaleza', 'retro', 'abc-fc', 'maranhao', 'jacuipense')
+    teams: I('vitoria', 'asa-al', 'sousa', 'itabaiana', 'fluminense-pi', 'juazeirense', 'crb', 'botafogo-pb', 'confianca', 'piaui',
+      'ceara', 'sport', 'america-rn', 'imperatriz', 'ferroviario-ce', 'fortaleza', 'retro', 'abc-fc', 'maranhao', 'jacuipense')
   },
-  roles: { gA: 'Grupo A', gB: 'Grupo B', gC: 'Grupo C', gD: 'Grupo D' }, champion: { phase: 1 },
+  roles: { teams: 'Participantes (os grupos são sorteados ao criar)' }, champion: { phase: 1 },
   phases: [
-    { type: 'rr', name: 'Fase de grupos', groups: { method: 'roles', roles: ['gA', 'gB', 'gC', 'gD'], names: ['Grupo A', 'Grupo B', 'Grupo C', 'Grupo D'] }, cross: true, tiebreak: ['pts', 'w', 'gd', 'gf'], zonesEach: [zone(1, 2, Z.lib, 'Quartas de final')] },
+    { type: 'rr', name: 'Fase de grupos', teams: { entry: 'teams' }, groups: { count: 4, byRating: true }, cross: true, tiebreak: ['pts', 'w', 'gd', 'gf'], zonesEach: [zone(1, 2, Z.lib, 'Quartas de final')] },
     { type: 'ko', name: 'Mata-mata', after: [0], teams: { list: [0, 1, 2, 3].map(g => ({ phase: 0, group: g, pos: [1, 2] })) }, pairing: 'pairs', pairs: [[0, 5], [6, 3], [2, 7], [4, 1]],
       seedBy: { campaign: [0, 1] }, legs: 2, et: false, pens: true, roundsCfg: [{ legs: 1 }], roundNames: ['Quartas de final', 'Semifinal', 'Final'] }
   ],
-  rules: ['20 clubes em quatro grupos de cinco. Os grupos se enfrentam cruzados, em turno único: cada clube do A joga contra os cinco do B, e cada clube do C contra os cinco do D (5 jogos). Clubes dos grupos A e C fazem três jogos em casa.',
+  rules: ['Você escolhe os 20 clubes; o site sorteia os grupos por potes de força. 20 clubes em quatro grupos de cinco. Os grupos se enfrentam cruzados, em turno único: cada clube do A joga contra os cinco do B, e cada clube do C contra os cinco do D (5 jogos). Clubes dos grupos A e C fazem três jogos em casa.',
     'A classificação é por grupo; os dois primeiros de cada um avançam.', 'Desempate: vitórias, saldo de gols, gols marcados, menos cartões vermelhos, menos amarelos, sorteio.',
     'Quartas em jogo único na casa do melhor colocado: 1º A × 2º C, 1º B × 2º D, 1º C × 2º A, 1º D × 2º B. Empate vai direto aos pênaltis.',
     'Semifinais (vencedores de 1ºA×2ºC contra 1ºD×2ºB, e de 1ºB×2ºD contra 1ºC×2ºA) e final em ida e volta, sem gol fora nem prorrogação; empate no agregado vai aos pênaltis. A melhor campanha decide em casa.',
     'O campeão ganha vaga na 3ª fase da Copa do Brasil.'],
-  notes: ['Grupos reais do sorteio de 3 de março de 2026 (dá para trocar qualquer clube antes de criar). Cartões não são simulados.'],
+  notes: ['A lista vem com os 20 participantes de 2026; troque quem quiser. Os grupos são sorteados por potes de força ao criar (o sorteio real separa por federação, o que aqui não é considerado). Cartões não são simulados.'],
   sources: [{ t: 'Wikipedia — 2026 Copa do Nordeste', u: 'https://en.wikipedia.org/wiki/2026_Copa_do_Nordeste' }, { t: 'TNH1 — Copa do Nordeste 2026: grupos, formato e datas', u: 'https://www.tnh1.com.br/noticia/nid/copa-do-nordeste-2026-veja-os-grupos-o-formato-e-as-datas/' }]
 });
 add({
   id: 'sulsudeste-2026', name: 'Copa Sul-Sudeste 2026', group: 'Brasil', crest: 'assets/logos/lg-copa-sul-sudeste.png', icon: 'groups', short: '12 clubes · 2 grupos (A×B) + semifinal e final',
   entries: {
-    gA: I('caxias', 'chapecoense', 'cianorte', 'novorizontino', 'sampaio-correa-rj', 'tombense'),
-    gB: I('america-mg', 'avai', 'juventude', 'operario', 'sao-bernardo', 'volta-redonda')
+    teams: I('caxias', 'chapecoense', 'cianorte', 'novorizontino', 'sampaio-correa-rj', 'tombense',
+      'america-mg', 'avai', 'juventude', 'operario', 'sao-bernardo', 'volta-redonda')
   },
-  roles: { gA: 'Grupo A', gB: 'Grupo B' }, champion: { phase: 1 },
+  roles: { teams: 'Participantes (os grupos são sorteados ao criar)' }, champion: { phase: 1 },
   phases: [
-    { type: 'rr', name: 'Fase de grupos', groups: { method: 'roles', roles: ['gA', 'gB'], names: ['Grupo A', 'Grupo B'] }, cross: true, tiebreak: ['pts', 'w', 'gd', 'gf'], zonesEach: [zone(1, 2, Z.lib, 'Semifinal')] },
+    { type: 'rr', name: 'Fase de grupos', teams: { entry: 'teams' }, groups: { count: 2, byRating: true }, cross: true, tiebreak: ['pts', 'w', 'gd', 'gf'], zonesEach: [zone(1, 2, Z.lib, 'Semifinal')] },
     { type: 'ko', name: 'Mata-mata', after: [0], teams: { list: [{ phase: 0, group: 0, pos: [1, 2] }, { phase: 0, group: 1, pos: [1, 2] }] }, pairing: 'pairs', pairs: [[0, 1], [2, 3]],
       seedBy: { campaign: [0, 1] }, legs: 2, et: false, pens: true, roundNames: ['Semifinal', 'Final'] }
   ],
-  rules: ['12 clubes de SP, RJ, MG, PR, SC e RS (dois por estado), em dois grupos de seis. Cada clube enfrenta os seis do outro grupo em turno único (3 jogos em casa e 3 fora); não há jogos dentro do grupo.',
+  rules: ['Você escolhe os 12 clubes; o site sorteia os dois grupos de seis por potes de força. No formato real são dois clubes por estado (SP, RJ, MG, PR, SC e RS). Cada clube enfrenta os seis do outro grupo em turno único (3 jogos em casa e 3 fora); não há jogos dentro do grupo.',
     'A classificação é por grupo; os dois primeiros avançam.', 'Desempate: vitórias, saldo de gols, gols marcados, menos cartões vermelhos, menos amarelos, sorteio.',
     'Semifinais entre os classificados do mesmo grupo (1º A × 2º A e 1º B × 2º B), em ida e volta, com a volta na casa do 1º colocado. Empate no agregado vai aos pênaltis.',
     'Final em ida e volta; a melhor campanha decide em casa; empate vai aos pênaltis.', 'O campeão ganha vaga na 3ª fase da Copa do Brasil de 2027.'],
-  notes: ['Primeira edição da competição. Grupos reais do sorteio (o Caxias entrou no lugar do Internacional, que desistiu). Cartões não são simulados.'],
+  notes: ['A lista vem com os 12 participantes da 1ª edição (o Caxias entrou no lugar do Internacional, que desistiu); troque quem quiser. Os grupos são sorteados por potes de força ao criar. Cartões não são simulados.'],
   sources: [{ t: 'CBF — Regulamento Específico da Copa Sul-Sudeste 2026', u: 'https://files.clicrdc.com.br/wp-content/uploads/2026/03/REC_COPA_SUL_SUDESTE_2026_96e5c88253-1.pdf' }, { t: 'Wikipedia — 2026 Copa Sul-Sudeste', u: 'https://en.wikipedia.org/wiki/2026_Copa_Sul-Sudeste' }, { t: 'Jornal Grande Bahia — Grupos, formato e datas da Copa Sul-Sudeste', u: 'https://jornalgrandebahia.com.br/?p=1329805' }]
+});
+
+/* ======================== ESTADUAIS ======================== */
+add({
+  id: 'pernambucano-2627', name: 'Campeonato Pernambucano 2026/27', group: 'Estaduais', crest: 'assets/logos/lg-fpf.png', icon: 'groups', short: '31 clubes · 1º turno regionalizado + 2º turno com o Trio de Ferro',
+  entries: {
+    gA: I('primeiro-de-maio-pe', 'afogados', 'facilnet', 'ferroviario-pe', 'petrolina', 'salgueiro'),
+    gB: I('belo-jardim', 'central-pe', 'cha-grande', 'pesqueira', 'porto-pe', 'ypiranga-pe'),
+    gC: I('aguia-de-cumaru', 'atletico-pe', 'centro-limoeirense', 'jaguar-pe', 'santa-fe-pe', 'serrano-pe'),
+    gD: I('america-pe', 'guarany-pe', 'ibis', 'ipojuca', 'sete-de-setembro-pe', 'vera-cruz-pe'),
+    direct: I('sport', 'nautico', 'retro', 'santa-cruz', 'decisao', 'maguary-pe', 'vitoria-das-tabocas')
+  },
+  roles: { gA: '1º turno · Grupo A (Sertão)', gB: '1º turno · Grupo B (Agreste)', gC: '1º turno · Grupo C (Zona da Mata)', gD: '1º turno · Grupo D (Grande Recife)',
+    direct: '2º turno · classificados direto (os 2 primeiros ficam no Grupo A e os 2 seguintes no Grupo B)' },
+  champion: { phase: 4 },
+  phases: [
+    { type: 'rr', name: '1º turno · Grupos', groups: { method: 'roles', roles: ['gA', 'gB', 'gC', 'gD'], names: ['Grupo A (Sertão)', 'Grupo B (Agreste)', 'Grupo C (Zona da Mata)', 'Grupo D (Grande Recife)'] },
+      legs: 1, tiebreak: ['pts', 'w', 'gd', 'gf'], zonesEach: [zone(1, 4, Z.lib, 'Oitavas do 1º turno')] },
+    { type: 'ko', name: '1º turno · Mata-mata', after: [0],
+      teams: { list: [0, 1, 2, 3].map(g => ({ phase: 0, group: g, pos: [1, 4] })) },
+      // ordem: 1A×4B, 2B×3A | 1B×4A, 2A×3B | 1C×4D, 2D×3C | 1D×4C, 2C×3D (vencedores vizinhos se cruzam nas quartas)
+      pairing: 'pairs', pairs: [[0, 7], [5, 2], [4, 3], [1, 6], [8, 15], [13, 10], [12, 11], [9, 14]],
+      seedBy: { campaign: [0] }, legs: 1, et: false, pens: true, maxRounds: 2, roundNames: ['Oitavas de final', 'Quartas de final'] },
+    { type: 'rr', name: '1º turno · Quadrangular', after: [1], teams: { phase: 1, winners: true }, legs: 1, tiebreak: ['pts', 'w', 'gd', 'gf'],
+      zones: [zone(1, 1, Z.champion, 'Campeão do 1º turno e vaga no 2º turno'), zone(2, 3, Z.lib, 'Vaga no 2º turno')] },
+    { type: 'rr', name: '2º turno · Grupos', after: [2],
+      teams: { list: [{ entry: 'direct', take: [0, 4] }, { list: [{ entry: 'direct', take: [4, 7] }, { phase: 2, pos: [1, 3] }], sortBy: { rating: true } }] },
+      groups: { count: 2, fixedPots: 2 }, cross: true, tiebreak: ['pts', 'w', 'gd', 'gf'],
+      zonesEach: [zone(1, 1, Z.champion, 'Direto na semifinal'), zone(2, 3, Z.lib, 'Quartas de final')] },
+    { type: 'ko', name: '2º turno · Mata-mata', after: [3],
+      teams: { list: [{ phase: 3, group: 0, pos: [1, 3] }, { phase: 3, group: 1, pos: [1, 3] }] },
+      pairing: 'pairs', pairs: [[0, null], [1, 2], [3, null], [4, 5]],
+      seedBy: { campaign: [3] }, legs: 2, et: false, pens: true, roundNames: ['Quartas de final', 'Semifinal', 'Final'] }
+  ],
+  outcomes: [{ label: 'Campeão do 1º turno', color: Z.champion, src: { phase: 2, pos: [1, 1] } }],
+  rules: ['31 clubes. Primeiro turno com 24 clubes em 4 grupos regionais de 6 (Sertão, Agreste, Zona da Mata e Grande Recife), turno único, 5 jogos. Avançam os 4 primeiros de cada grupo.',
+    'Oitavas em jogo único, cruzando grupos vizinhos: 1ºA × 4ºB, 1ºB × 4ºA, 2ºA × 3ºB, 2ºB × 3ºA (e o mesmo entre C e D). Quartas também em jogo único. Mando para a melhor campanha; empate vai direto aos pênaltis.',
+    'Quadrangular final do 1º turno em turno único: o 1º é campeão do turno, e os 3 primeiros vão ao 2º turno.',
+    'Segundo turno com 10 clubes: os 7 classificados direto (Sport, Náutico, Santa Cruz, Retrô, Decisão, Maguary e Vitória das Tabocas) e os 3 do quadrangular. Dois grupos de 5, com Sport e Retrô no A e Náutico e Santa Cruz no B; os outros 6 são sorteados.',
+    'Cada clube enfrenta os 5 do outro grupo, em turno único. O 1º de cada grupo vai direto à semifinal; 2º e 3º se enfrentam nas quartas (2ºA × 3ºA e 2ºB × 3ºB).',
+    'Quartas, semifinais (1ºA × vencedor de 2ºA/3ºA; 1ºB × vencedor de 2ºB/3ºB) e final em ida e volta, sem prorrogação: empate no agregado vai aos pênaltis. A melhor campanha decide em casa.',
+    'Desempate nos grupos: pontos, vitórias, saldo de gols, gols marcados.'],
+  notes: ['Formato aprovado no Conselho Arbitral de 20/08/2026; o 2º turno segue a proposta da FPF descrita pela imprensa. Rebaixamento e o critério das vagas de 2028 (4 na Copa do Brasil, 2 na Copa do Nordeste e 2 na Série D) ainda não foram divulgados e não entram aqui.',
+    'O Ferroviário usa o escudo enviado; confira se é o clube certo do Grupo A.'],
+  sources: [{ t: 'Diario de Pernambuco — Conselho Arbitral define formato do novo Pernambucano', u: 'https://www.diariodepernambuco.com.br/esportes-dp/interior/2026/08/11721800-novo-campeonato-pernambucano-conselho-arbitral-define-formato-e-1-fase-comeca-em-outubro.html' },
+    { t: 'Portal de Prefeitura — Pernambucano 26/27 tem modelo, clubes e grupos definidos', u: 'https://portaldeprefeitura.com.br/esportes/campeonato-pernambucano-2627-tem-modelo-clubes-e-grupos-definidos/630561/' },
+    { t: 'Cassio Zirpoli — Fase principal do PE 2027', u: 'https://cassiozirpoli.com.br/segundo-turno-do-pernambucano-2027-tem-sport-e-retro-de-um-lado-e-nautico-e-santa-cruz-do-outro/' },
+    { t: 'Cassio Zirpoli — Pernambucano 2027 confirma 31 clubes', u: 'https://cassiozirpoli.com.br/pernambucano-2027-confirma-31-clubes-e-inicio-em-outubro-de-2026-trio-de-ferro-larga-depois/' },
+    { t: 'Nova Pauta — Pernambucano 2027 muda formato e reúne 31 clubes', u: 'https://portalnovapauta.com.br/campeonato-pernambucano-2027/' }]
 });
 
 /* ======================== AMÉRICA DO SUL ======================== */
@@ -851,21 +900,21 @@ add({
   id: 'asian-cup-2027', name: 'Copa da Ásia 2027', group: 'Seleções · AFC', icon: 'groups', short: '24 seleções · 6 grupos + oitavas · Arábia Saudita',
   entries: {
     hosts: N('saudi-arabia'),
-    gA: N('saudi-arabia', 'kuwait', 'oman', 'palestine'), gB: N('uzbekistan', 'bahrain', 'north-korea', 'jordan'), gC: N('iran', 'syria', 'kyrgyztan', 'china'),
-    gD: N('australia', 'tajikistan', 'iraq', 'singapore'), gE: N('south-korea', 'united-arab-emirates', 'vietnam', 'yemen'), gF: N('japan', 'qatar', 'thailand', 'indonesia')
+    teams: N('saudi-arabia', 'kuwait', 'oman', 'palestine', 'uzbekistan', 'bahrain', 'north-korea', 'jordan', 'iran', 'syria', 'kyrgyztan', 'china',
+      'australia', 'tajikistan', 'iraq', 'singapore', 'south-korea', 'united-arab-emirates', 'vietnam', 'yemen', 'japan', 'qatar', 'thailand', 'indonesia')
   },
-  roles: { hosts: 'Sede (joga em casa)', gA: 'Grupo A', gB: 'Grupo B', gC: 'Grupo C', gD: 'Grupo D', gE: 'Grupo E', gF: 'Grupo F' },
-  hostCfg: { mode: 'flag', pool: ['gA', 'gB', 'gC', 'gD', 'gE', 'gF'], max: 3 }, champion: { phase: 1 },
+  roles: { hosts: 'Sede (joga em casa)', teams: 'Seleções participantes (os grupos são sorteados ao criar)' },
+  hostCfg: { mode: 'flag', pool: ['teams'], max: 3 }, champion: { phase: 1 },
   phases: [
-    { type: 'rr', name: 'Fase de grupos', groups: { method: 'roles', roles: ['gA', 'gB', 'gC', 'gD', 'gE', 'gF'], names: ['Grupo A', 'Grupo B', 'Grupo C', 'Grupo D', 'Grupo E', 'Grupo F'] }, legs: 1, neutral: true, tiebreak: ['pts', 'h2h', 'gd', 'gf'],
+    { type: 'rr', name: 'Fase de grupos', teams: { entry: 'teams' }, groups: { count: 6, byRating: true, hostsFirst: true }, legs: 1, neutral: true, tiebreak: ['pts', 'h2h', 'gd', 'gf'],
       zonesEach: [zone(1, 2, Z.lib, 'Oitavas de final'), zone(3, 3, Z.prelib, '4 melhores 3ºs avançam')] },
     { type: 'ko', name: 'Mata-mata', after: [0], teams: { phase: 0 }, pairing: 'thirds24', ...KO_NT, roundNames: ['Oitavas de final', 'Quartas de final', 'Semifinal', 'Final'] }
   ],
-  rules: ['24 seleções em 6 grupos de 4, turno único. A sede joga em casa; os outros jogos são em campo neutro.',
+  rules: ['Você escolhe as 24 seleções; o site sorteia 6 grupos de 4 por potes do ranking, com a sede no pote 1 (Grupo A). Turno único; a sede joga em casa; os outros jogos são em campo neutro.',
     'Avançam os 2 primeiros e os 4 melhores 3ºs. Os 3ºs são encaixados nas oitavas pelos grupos de origem.',
     'Mata-mata em jogo único com prorrogação e pênaltis, sem disputa de 3º lugar.',
     'Desempate: pontos, confronto direto, saldo, gols marcados.'],
-  notes: ['Classificados e grupos reais (sorteio de 9 de maio de 2026). O encaixe dos 3ºs segue o modelo da Euro, parecido com a tabela da AFC.'],
+  notes: ['A lista vem com os 24 classificados reais; troque quem quiser. Os grupos são sorteados por potes do ranking ao criar, com a sede no Grupo A. O encaixe dos 3ºs segue o modelo da Euro, parecido com a tabela da AFC.'],
   sources: [SRC_NT.asia]
 });
 
@@ -943,5 +992,5 @@ const CRESTS = {
 };
 T_.forEach(t => { if (!t.crest && CRESTS[t.id]) t.crest = `assets/logos/${CRESTS[t.id]}.png`; });
 
-return { TEMPLATES: T_, TEMPLATE_GROUPS: ['Brasil', 'América do Sul', 'Ligas europeias', 'Segundas divisões', 'Copas europeias', 'Outras ligas', 'Seleções · UEFA', 'Seleções · Conmebol', 'Seleções · Concacaf', 'Seleções · CAF', 'Seleções · AFC', 'Seleções · OFC'] };
+return { TEMPLATES: T_, TEMPLATE_GROUPS: ['Brasil', 'Estaduais', 'América do Sul', 'Ligas europeias', 'Segundas divisões', 'Copas europeias', 'Outras ligas', 'Seleções · UEFA', 'Seleções · Conmebol', 'Seleções · Concacaf', 'Seleções · CAF', 'Seleções · AFC', 'Seleções · OFC'] };
 })();

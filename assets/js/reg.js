@@ -265,7 +265,7 @@ const Reg = (() => {
           rest.forEach((id, k) => groups[slots[k]].teams.push(id));
           continue;
         }
-        if (!(p === 0 && G.fixedFirst)) pot = shuffle(pot);
+        if (!((p === 0 && G.fixedFirst) || p < (G.fixedPots || 0))) pot = shuffle(pot);
         pot.forEach((id, k) => groups[k].teams.push(id));
       }
       // sedes em grupos diferentes (sorteio refeito se preciso)
