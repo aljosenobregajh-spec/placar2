@@ -540,6 +540,33 @@ const Reg = (() => {
     const pairs = [[W[1], pick[0]], [W[0], R[2]], [W[5], pick[2]], [R[3], R[4]], [W[2], pick[1]], [R[0], R[1]], [W[4], pick[3]], [W[3], R[5]]];
     return { pairs, entrants: [...W, ...R, ...best] };
   }
+  // 48 seleções (12 grupos): 16 avos da Copa de 2026, com os 8 melhores 3ºs encaixados pelas restrições oficiais
+  function thirds48(comp, phase) {
+    const st = comp.stages[phase];
+    const W = {}, R = {}, Th = [], L = 'ABCDEFGHIJKL';
+    st.groups.forEach((g, gi) => { const r = rank(comp, phase, gi); W[L[gi]] = r[0].id; R[L[gi]] = r[1].id; Th.push({ id: r[2].id, g: L[gi] }); });
+    const best = rankedPerGroup(comp, phase, 3, 3).slice(0, 8);
+    const thirds = Th.filter(t => best.includes(t.id));
+    const slots = [['E', 'ABCDF'], ['I', 'CDFGH'], ['A', 'CEFHI'], ['L', 'EHIJK'], ['D', 'BEFIJ'], ['G', 'AEHIJ'], ['B', 'EFGIJ'], ['K', 'DEIJL']];
+    const pick = {};
+    const solve = k => {
+      if (k === slots.length) return true;
+      for (const t of shuffle(thirds)) {
+        if (Object.values(pick).includes(t.id) || !slots[k][1].includes(t.g)) continue;
+        pick[k] = t.id; if (solve(k + 1)) return true; delete pick[k];
+      }
+      return false;
+    };
+    if (!solve(0)) thirds.forEach((t, k) => { pick[k] = t.id; });
+    const T3 = w => pick[slots.findIndex(s => s[0] === w)];
+    const M = {
+      73: [R.A, R.B], 74: [W.E, T3('E')], 75: [W.F, R.C], 76: [W.C, R.F], 77: [W.I, T3('I')], 78: [R.E, R.I], 79: [W.A, T3('A')], 80: [W.L, T3('L')],
+      81: [W.D, T3('D')], 82: [W.G, T3('G')], 83: [R.K, R.L], 84: [W.H, R.J], 85: [W.B, T3('B')], 86: [W.J, R.H], 87: [W.K, T3('K')], 88: [R.D, R.G]
+    };
+    // ordem que reproduz o chaveamento oficial (oitavas 89–96, quartas 97–100, semifinais 101–102)
+    const pairs = [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87].map(n => M[n]);
+    return { pairs, entrants: [...rankedPerGroup(comp, phase, 1, 2), ...best] };
+  }
   function buildKO(comp, i) {
     const spec = comp.spec[i];
     setHosts(comp);
@@ -568,11 +595,11 @@ const Reg = (() => {
       return { type: 'knockout', name: spec.name, entrants, direct: [...D, ...U], directQ: D, reserved: U, paths: P,
         rounds: [{ name: roundLabel(spec, N, 0), ties: pairs.map(([x, y]) => mkTie(x, y, cfg, seedOf)) }] };
     }
-    if (spec.pairing === 'thirds24') {
-      const { pairs, entrants } = thirds24(comp, spec.teams.phase);
+    if (spec.pairing === 'thirds24' || spec.pairing === 'thirds48') {
+      const { pairs, entrants } = (spec.pairing === 'thirds48' ? thirds48 : thirds24)(comp, spec.teams.phase);
       const seedOf = seedFn(comp, spec, entrants);
       const cfg = roundCfg(spec, 0, false);
-      return { type: 'knockout', name: spec.name, entrants, rounds: [{ name: roundLabel(spec, 16, 0), ties: pairs.map(([x, y]) => mkTie(x, y, cfg, seedOf)) }] };
+      return { type: 'knockout', name: spec.name, entrants, rounds: [{ name: roundLabel(spec, pairs.length * 2, 0), ties: pairs.map(([x, y]) => mkTie(x, y, cfg, seedOf)) }] };
     }
     if (spec.autoIfSame) {
       const [a, b] = spec.autoIfSame.map(s => resolve(comp, s)[0]);
@@ -698,6 +725,7 @@ const Reg = (() => {
       const st = comp.stages[ch.phase];
       comp.champion = st.type === 'knockout' ? koWinner(st) : (rank(comp, ch.phase, ch.group || 0)[0] || {}).id || null;
     } else comp.champion = null;
+    if (comp.noChamp) comp.champion = null;
   }
 
   function create(tpl, entries, name) {

@@ -7,10 +7,11 @@ const Store = {
   load() {
     let raw = null;
     try { raw = JSON.parse(localStorage.getItem(KEY)); } catch (e) { raw = null; }
-    this.d = Object.assign({ overrides: {}, custom: [], removed: [], comps: [] }, raw || {});
+    this.d = Object.assign({ overrides: {}, custom: [], removed: [], comps: [], cycles: [] }, raw || {});
     this.d.settings = Object.assign({ chaos: 25, homeAdv: 1, goals: 1, altitude: 1, speed: 'normal' }, (raw && raw.settings) || {});
   },
   save() {
+    try { WC.syncAll(this.d); } catch (e) { console.error(e); }
     try { localStorage.setItem(KEY, JSON.stringify(this.d)); }
     catch (e) { toast('Não foi possível salvar: o armazenamento do navegador está cheio ou bloqueado.'); }
   }
@@ -111,7 +112,7 @@ const Modal = {
     if (f) f.focus({ preventScroll: true });
   },
   refresh() { if (this.el) this.el.firstElementChild.innerHTML = this.renderFn(); },
-  close() { if (this.el) { this.el.remove(); this.el = null; this.renderFn = null; } }
+  close() { if (this.el) { this.el.remove(); this.el = null; this.renderFn = null; flushRender(); } }
 };
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { stopAnim(); Modal.close(); }
@@ -126,6 +127,14 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// depois de simular um jogo, a página só é atualizada quando a animação termina (ou o modal fecha),
+// para o placar final não aparecer antes da hora
+function flushRender() {
+  if (!UI.pendingRender) return;
+  UI.pendingRender = false;
+  const y = window.scrollY; render(); window.scrollTo(0, y);
+}
+
 /* ================= Estado de UI ================= */
 const UI = {
   match: { h: 'real-madrid', a: 'sport', neutral: true, legs: 1, decider: 'none', result: null, mc: null },
@@ -136,6 +145,7 @@ const UI = {
   wizard: null,
   hero: null,
   anim: null,
+  wc: {}, wcUndo: {}, wcWizard: null,   // modo Copa do Mundo
   skipAll: false
 };
 
@@ -149,7 +159,7 @@ function animate(m, onFrame, onDone, fixedMs) {
   const ctl = { paused: false, stopped: false, minute: 0, done: false, skip() { ctl.minute = total; ctl.paused = false; }, stop() { ctl.stopped = true; } };
   const per = () => (fixedMs ?? SPEEDS[Store.d.settings.speed] ?? SPEEDS.normal) / 90;
   const finish = () => { ctl.done = true; onDone && onDone(); syncPlaybar(); };
-  if (reduced || per() === 0 || (fixedMs == null && UI.skipAll)) { onFrame(total, true); finish(); return ctl; }
+  if (per() === 0 || (fixedMs == null && UI.skipAll)) { onFrame(total, true); finish(); return ctl; }
   let last = null, shown = -1;
   const tick = ts => {
     if (ctl.stopped) return;
@@ -534,13 +544,14 @@ function tplIcon(t) {
   return `<span class="ic-stack">${top.map(tm => `<span>${crest(tm, 26)}</span>`).join('')}</span>`;
 }
 Pages.competicoes = () => {
-  const comps = Store.d.comps.slice().reverse();
+  const comps = Store.d.comps.filter(c => !c.cycle).reverse();
   const groups = TEMPLATE_GROUPS.map(g => [g, TEMPLATES.filter(t => (t.group || 'Outras ligas') === g)]).filter(([, l]) => l.length);
   return `<section class="page"><div class="wrap">
     <div class="page-head"><div><h1>Competições</h1><p>Os modelos oficiais seguem o regulamento de cada competição (fases, desempates, playoffs, acesso e rebaixamento) e deixam trocar qualquer clube antes do sorteio. Ou crie uma do zero.</p></div>
       <button class="btn btn-lime" data-act="newComp">${I.plus} Nova competição</button></div>
     ${comps.length ? `<div class="section-head"><h2 style="font-size:22px">Salvas</h2><span class="aside">${comps.length} competiç${comps.length === 1 ? 'ão' : 'ões'}</span></div>
       <div class="comp-list" style="margin-bottom:44px">${comps.map(compCard).join('')}</div>` : ''}
+    ${wcPromoHTML()}
     ${groups.map(([g, list], gi) => `
       <div class="section-head" style="margin-top:${gi ? 34 : 0}px"><h2 style="font-size:19px">${esc(g)}</h2></div>
       <div class="tpl-grid">
@@ -704,7 +715,7 @@ function wizardHTML() {
 function compTabs(c) {
   const P = ['prob', 'Probabilidades'];
   const V = evoSources(c).length ? [['evo', 'Evolução']] : [];
-  if (c.reg) return [...c.spec.map((sp, i) => ['p' + i, sp.name]), ['games', 'Jogos'], ...V, P, ['rules', 'Regulamento']];
+  if (c.reg) return [...c.spec.map((sp, i) => ['p' + i, sp.name]), ['games', 'Jogos'], ...V, ...(c.noChamp ? [] : [P]), ['rules', 'Regulamento']];
   if (c.format === 'league') return [['table', 'Classificação'], ['games', 'Jogos'], ...V, P];
   if (c.format === 'groups') return [['groups', 'Grupos'], ['games', 'Jogos'], ['bracket', 'Mata-mata'], ...V, P];
   if (c.format === 'swiss') return [['table', 'Fase de liga'], ['games', 'Jogos'], ['bracket', 'Mata-mata'], ...V, P];
@@ -740,22 +751,22 @@ function compDates(c) {
       if (st.type === 'rr') {
         const gOf = {};
         if (st.groups.length > 1) st.groups.forEach(g => g.teams.forEach(id => { gOf[id] = g.name; }));
-        st.rounds.forEach((r, k) => out.push({ label: `${sp.name} · rodada ${k + 1}`, items: r.map(m => ({ m, note: st.groups.length > 1 ? (gOf[m.h] === gOf[m.a] ? gOf[m.h] : 'Interzonal') : null })) }));
-      } else out.push(...koDates(st, sp.name));
+        st.rounds.forEach((r, k) => out.push({ tab: 'p' + i, label: `${sp.name} · rodada ${k + 1}`, items: r.map(m => ({ m, note: st.groups.length > 1 ? (gOf[m.h] === gOf[m.a] ? gOf[m.h] : 'Interzonal') : null })) }));
+      } else out.push(...koDates(st, sp.name).map(d => ({ ...d, tab: 'p' + i })));
     });
     return out;
   }
   c.stages.forEach(st => {
-    if (st.type === 'league' || st.type === 'swiss') st.rounds.forEach((r, i) => out.push({ label: `Rodada ${i + 1}`, items: r.map(m => ({ m })) }));
+    if (st.type === 'league' || st.type === 'swiss') st.rounds.forEach((r, i) => out.push({ tab: 'table', label: `Rodada ${i + 1}`, items: r.map(m => ({ m })) }));
     if (st.type === 'groups') {
       const R = Math.max(...st.groups.map(g => g.rounds.length));
-      for (let i = 0; i < R; i++) out.push({ label: `Grupos · ${i + 1}ª rodada`, items: st.groups.flatMap(g => (g.rounds[i] || []).map(m => ({ m, note: g.name }))) });
+      for (let i = 0; i < R; i++) out.push({ tab: 'groups', label: `Grupos · ${i + 1}ª rodada`, items: st.groups.flatMap(g => (g.rounds[i] || []).map(m => ({ m, note: g.name }))) });
     }
     if (st.type === 'knockout') st.rounds.forEach(rd => {
       const legs = Math.max(...rd.ties.map(t => t.m.length));
       for (let l = 0; l < legs; l++) {
         const items = rd.ties.filter(t => t.m[l]).map(t => ({ m: t.m[l], tie: t, leg: l }));
-        if (items.length) out.push({ label: legs > 1 ? `${rd.name} · ${l === 0 ? 'ida' : 'volta'}` : rd.name, items });
+        if (items.length) out.push({ tab: 'bracket', label: legs > 1 ? `${rd.name} · ${l === 0 ? 'ida' : 'volta'}` : rd.name, items });
       }
     });
   });
@@ -782,7 +793,7 @@ function rowsTableHTML(rows, zones = [], legend = true) {
 function gameRow(item, c) {
   const { m, tie, leg } = item;
   const L = Engine.locate(c, m.id);
-  const editable = Engine.canEdit(c, m.id);
+  const editable = !lockedComp(c) && Engine.canEdit(c, m.id);
   const win = m.played ? Engine.matchWinner(m) : null;
   const hw = m.played && (tie ? (m.hg > m.ag || (m.hg === m.ag && win === m.h)) : m.hg > m.ag);
   const aw = m.played && (tie ? (m.ag > m.hg || (m.hg === m.ag && win === m.a)) : m.ag > m.hg);
@@ -807,29 +818,40 @@ function gameRow(item, c) {
   </div>`;
 }
 
-function gamesHTML(c) {
+// tab: quando informado, mostra só as rodadas daquela aba (fase) e em formato compacto, ao lado da tabela
+function gamesHTML(c, tab) {
   const dates = compDates(c);
   const st = UI.comp[c.id];
-  if (st.date == null || st.date >= dates.length) {
-    const i = dates.findIndex(d => d.items.some(x => !x.m.played));
-    st.date = i < 0 ? dates.length - 1 : i;
+  const idx = dates.map((d, i) => i).filter(i => !tab || dates[i].tab === tab);
+  if (!idx.length) return '';
+  if (st.date == null || !idx.includes(st.date)) {
+    const i = idx.find(k => dates[k].items.some(x => !x.m.played));
+    st.date = i == null ? idx[idx.length - 1] : i;
   }
   const d = dates[st.date];
+  const pos = idx.indexOf(st.date);
   let body = '';
   const groupsInDate = [...new Set(d.items.map(x => x.note).filter(Boolean))];
   if (groupsInDate.length) {
     body = groupsInDate.map(g => `<p class="game-label">${esc(g)}</p><div class="games">${d.items.filter(x => x.note === g).map(x => gameRow(x, c)).join('')}</div>`).join('');
   } else body = `<div class="games">${d.items.map(x => gameRow(x, c)).join('')}</div>`;
+  const short = l => (tab && c.reg ? l.replace(c.spec[+tab.slice(1)].name + ' · ', '').replace(/^./, ch => ch.toUpperCase()) : l);
   return `<div class="round-nav">
-      <span class="title">${esc(d.label)}</span>
+      <span class="title">${esc(short(d.label))}</span>
       <span class="navb">
-        ${d.items.some(x => !x.m.played) ? `<button class="btn btn-dark btn-sm" data-act="simDate">${I.dice} Simular os jogos que faltam</button>` : ''}
-        <button class="close" data-act="dateNav" data-v="-1" ${st.date === 0 ? 'disabled' : ''} aria-label="Rodada anterior">${I.left}</button>
-        <select data-inp="dateSel" aria-label="Escolher rodada">${dates.map((x, i) => `<option value="${i}" ${i === st.date ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>
-        <button class="close" data-act="dateNav" data-v="1" ${st.date === dates.length - 1 ? 'disabled' : ''} aria-label="Próxima rodada">${I.right}</button>
+        ${d.items.some(x => !x.m.played) ? `<button class="btn btn-dark btn-sm" data-act="simDate">${I.dice} ${tab ? 'Simular a rodada' : 'Simular os jogos que faltam'}</button>` : ''}
+        <button class="close" data-act="dateNav" data-v="${pos > 0 ? idx[pos - 1] : st.date}" ${pos === 0 ? 'disabled' : ''} aria-label="Rodada anterior">${I.left}</button>
+        <select data-inp="dateSel" aria-label="Escolher rodada">${idx.map(i => `<option value="${i}" ${i === st.date ? 'selected' : ''}>${esc(short(dates[i].label))}</option>`).join('')}</select>
+        <button class="close" data-act="dateNav" data-v="${pos < idx.length - 1 ? idx[pos + 1] : st.date}" ${pos === idx.length - 1 ? 'disabled' : ''} aria-label="Próxima rodada">${I.right}</button>
       </span>
     </div>${body}
-    ${Engine.finished(c) ? '' : `<p class="hint" style="margin-top:14px">Digite o placar para lançar um resultado (Tab ou Enter passa para o próximo campo), ou use o dado para simular só aquele jogo. Para desfazer, apague os dois números.</p>`}`;
+    ${Engine.finished(c) ? '' : `<p class="hint" style="margin-top:14px">${tab ? 'Digite o placar ou use o dado para simular o jogo. Para desfazer, apague os dois números.' : 'Digite o placar para lançar um resultado (Tab ou Enter passa para o próximo campo), ou use o dado para simular só aquele jogo. Para desfazer, apague os dois números.'}</p>`}`;
+}
+// tabela (ou chave) + jogos da rodada na mesma aba
+function withGames(c, tab, main, below) {
+  const g = gamesHTML(c, tab);
+  if (!g) return main;
+  return `<div class="live ${below ? 'below' : ''}"><div class="live-main">${main}</div><aside class="live-games">${g}</aside></div>`;
 }
 
 function bracketHTML(c) {
@@ -899,13 +921,18 @@ function phaseHTML(c, i) {
 function confirmHTML(c, i) {
   const spec = c.spec[i], cf = spec.confirm, ids = c.entries[cf.role] || [];
   const ready = Reg.awaiting(c) === i;
-  const libs = Store.d.comps.filter(x => x.reg && x.template === 'libertadores-2026' && x.stages[0] && Reg.stageDone(x, 0));
+  const nl = cf.kind === 'nl';
+  const libs = nl ? Store.d.comps.filter(x => x.reg && (x.template === 'unl-2627' || x.template === 'unl-next') && x.stages[0] && Reg.stageDone(x, 0))
+    : Store.d.comps.filter(x => x.reg && x.template === 'libertadores-2026' && x.stages[0] && Reg.stageDone(x, 0));
+  const what = nl ? 'seleções' : 'clubes';
   return `<div class="panel">
-    <div class="section-head" style="margin-bottom:6px"><h3>${esc(spec.name)}: ${esc(cf.label)}</h3><span class="aside">${ids.length} clubes · clique para trocar</span></div>
-    <p class="hint" style="margin-bottom:14px">${ready ? 'A fase anterior terminou. Confira os clubes que entram agora e confirme para montar os confrontos.' : 'Esta fase começa quando a anterior terminar. Você já pode ajustar os clubes que vão entrar.'}</p>
-    <div class="picker-grid">${ids.map((id, k) => `<button class="pick-team slot" data-act="guestSlot" data-phase="${i}" data-i="${k}">${crest(id, 26)}<span>${esc(nameOf(id))}</span><span class="o">${Teams.get(id) ? ovr(Teams.get(id)) : '–'}</span></button>`).join('')}</div>
+    <div class="section-head" style="margin-bottom:6px"><h3>${esc(spec.name)}: ${esc(cf.label)}</h3><span class="aside">${ids.length} ${what} · clique para trocar</span></div>
+    <p class="hint" style="margin-bottom:14px">${nl
+      ? (ready ? 'Os grupos terminaram. Estas vagas são das seleções mais bem colocadas na Liga das Nações que não ficaram entre as 2 primeiras do seu grupo. A sugestão abaixo usa o ranking; troque pelas da sua Liga das Nações ou importe de uma salva, e confirme para montar a repescagem.' : 'Esta fase começa quando os grupos terminarem. Aí você escolhe as seleções vindas da Liga das Nações.')
+      : (ready ? 'A fase anterior terminou. Confira os clubes que entram agora e confirme para montar os confrontos.' : 'Esta fase começa quando a anterior terminar. Você já pode ajustar os clubes que vão entrar.')}</p>
+    ${nl && !ready ? '' : `<div class="picker-grid">${ids.map((id, k) => `<button class="pick-team slot" data-act="guestSlot" data-phase="${i}" data-i="${k}">${crest(id, 26)}<span>${esc(nameOf(id))}</span><span class="o">${Teams.get(id) ? ovr(Teams.get(id)) : '–'}</span></button>`).join('')}</div>`}
     <div class="modal-foot">
-      ${libs.length ? `<select class="lg-select" data-inp="guestImport" data-phase="${i}"><option value="">Importar 3ºs de uma Libertadores salva…</option>${libs.map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select>` : '<span class="hint">Dica: se você tiver uma Libertadores salva com a fase de grupos encerrada, dá para importar os 3ºs colocados dela.</span>'}
+      ${nl && !ready ? '' : libs.length ? `<select class="lg-select" data-inp="guestImport" data-phase="${i}"><option value="">${nl ? 'Importar de uma Liga das Nações salva…' : 'Importar 3ºs de uma Libertadores salva…'}</option>${libs.map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select>` : `<span class="hint">${nl ? 'Dica: se você tiver uma Liga das Nações da UEFA salva com a fase de ligas encerrada, dá para importar dela.' : 'Dica: se você tiver uma Libertadores salva com a fase de grupos encerrada, dá para importar os 3ºs colocados dela.'}</span>`}
       ${ready ? `<button class="btn btn-lime" data-act="guestConfirm" data-phase="${i}">Confirmar e montar ${esc(spec.name.toLowerCase())}</button>` : ''}
     </div>
   </div>`;
@@ -1140,27 +1167,31 @@ function outcomesHTML(c) {
 Pages.comp = id => {
   const c = Store.d.comps.find(x => x.id === id);
   if (!c) return `<section class="page"><div class="wrap"><div class="panel empty"><h3>Competição não encontrada</h3><p>Ela pode ter sido excluída.</p><p style="margin-top:14px"><a class="btn btn-dark" href="#/competicoes">Ver competições</a></p></div></div></section>`;
-  if (!UI.comp[id]) UI.comp[id] = { tab: defaultTab(c), date: null };
+  if (c.cycle) WC.prepare(Store.d, c);
+  if (!UI.comp[id]) UI.comp[id] = { tab: c.reg && Reg.awaiting(c) >= 0 ? 'p' + Reg.awaiting(c) : defaultTab(c), date: null };
   const S = UI.comp[id];
+  const locked = lockedComp(c), cyc = c.cycle && Store.d.cycles.find(x => x.id === c.cycle);
   const p = Engine.progress(c);
   const st = Engine.currentStage(c);
   let body = '';
   if (S.tab === 'prob') body = probHTML(c);
   else if (S.tab === 'evo') body = evoHTML(c);
-  else if (c.reg && S.tab[0] === 'p' && S.tab !== 'prob') body = phaseHTML(c, +S.tab.slice(1));
+  else if (c.reg && S.tab[0] === 'p' && S.tab !== 'prob') { const pi = +S.tab.slice(1), pst = c.stages[pi]; body = pst && !pst.auto ? withGames(c, S.tab, phaseHTML(c, pi), pst.type === 'knockout') : phaseHTML(c, pi); }
   else if (S.tab === 'rules') body = rulesHTML(c);
   else if (S.tab === 'table') {
     const stage = c.stages[0];
-    body = tableHTML(c, stage.teams, stage.rounds.flat(), c.zones);
+    body = withGames(c, 'table', tableHTML(c, stage.teams, stage.rounds.flat(), c.zones));
   } else if (S.tab === 'groups') {
     const stage = c.stages[0];
     const q = c.cfg.qualify;
     body = `<div class="groups-grid">${stage.groups.map(g => `<div><h4>${esc(g.name)}</h4>${tableHTML(c, g.teams, g.rounds.flat(), [{ from: 1, to: q, color: ZONE_COLORS.lib, label: '' }]).replace(/<div class="legend">[\s\S]*?<\/div>$/, '')}</div>`).join('')}</div>
       <div class="legend"><span><i style="background:${ZONE_COLORS.lib}"></i>Classificados ao mata-mata</span></div>`;
+    body = withGames(c, 'groups', body);
   } else if (S.tab === 'games') body = gamesHTML(c);
-  else if (S.tab === 'bracket') body = bracketHTML(c);
+  else if (S.tab === 'bracket') body = withGames(c, 'bracket', bracketHTML(c), true);
 
   return `<section class="page"><div class="wrap">
+    ${cyc ? `<a class="back-link" href="#/copa/${cyc.id}">${I.left} ${esc(cyc.name)} · painel do ciclo</a>` : ''}
     <div class="comp-hero">
       <div class="badge ${compCrest(c) ? '' : 'plain'}">${compCrest(c) ? `<img src="${esc(compCrest(c))}" alt="">` : FORMAT_ICON[c.format] || I.trophy}</div>
       <div>
@@ -1169,21 +1200,22 @@ Pages.comp = id => {
         <div class="progress"><span style="width:${p * 100}%"></span></div>
       </div>
       <div class="acts">
-        <button class="btn btn-lime" data-act="compStep" ${Engine.finished(c) ? 'disabled' : ''}>Simular próxima rodada</button>
-        <button class="btn btn-line" style="border-color:var(--lime);color:var(--lime)" data-act="compAll" ${Engine.finished(c) ? 'disabled' : ''}>Simular até o fim</button>
+        <button class="btn btn-lime" data-act="compStep" ${Engine.finished(c) || locked ? 'disabled' : ''}>Simular próxima rodada</button>
+        <button class="btn btn-line" style="border-color:var(--lime);color:var(--lime)" data-act="compAll" ${Engine.finished(c) || locked ? 'disabled' : ''}>Simular até o fim</button>
         <div class="row">
           <button class="btn btn-ghost btn-sm" data-act="compUndo" ${undoStack(c).length ? `title="Desfazer: ${esc(undoStack(c)[undoStack(c).length - 1].label)} (Ctrl+Z)"` : 'disabled title="Nada para desfazer"'}>${I.undo} Desfazer${undoStack(c).length ? `<span class="undo-n">${undoStack(c).length}</span>` : ''}</button>
-          <button class="btn btn-ghost btn-sm" data-act="compClear" title="Apaga os resultados e mantém o sorteio">Limpar resultados</button>
-          <button class="btn btn-ghost btn-sm" data-act="compRedraw" title="Faz um novo sorteio de tabela/grupos/chave">Novo sorteio</button>
-          <button class="btn btn-ghost btn-sm btn-danger" data-act="compDelete">Excluir</button>
+          ${locked ? '' : `<button class="btn btn-ghost btn-sm" data-act="compClear" title="Apaga os resultados e mantém o sorteio">Limpar resultados</button>`}
+          ${locked || (cyc && c.part !== 'UEFA' && c.part !== 'CAF' && c.part !== 'AFC' && c.part !== 'CONCACAF' && c.part !== 'OFC') ? '' : `<button class="btn btn-ghost btn-sm" data-act="compRedraw" title="Faz um novo sorteio de tabela/grupos/chave">Novo sorteio</button>`}
+          ${cyc ? '' : `<button class="btn btn-ghost btn-sm btn-danger" data-act="compDelete">Excluir</button>`}
         </div>
       </div>
     </div>
     ${c.champion ? `<div class="champion">${crest(c.champion, 64)}<div><small>Campeão</small><h2>${esc(nameOf(c.champion))}</h2></div><span style="margin-left:auto;width:42px;height:42px;display:block">${I.trophy}</span></div>` : ''}
+    ${locked ? `<div class="callout"><div><b>Etapa encerrada.</b> A etapa seguinte do ciclo já começou, então estes resultados não podem mais ser alterados aqui. Para voltar atrás, use o Desfazer do painel do ciclo.</div><a class="btn btn-dark btn-sm" href="#/copa/${cyc.id}">Abrir painel</a></div>` : ''}
     ${c.reg ? outcomesHTML(c) : ''}
     ${c.reg && (tplOf(c) || {}).nextSeason && Reg.finished(c) ? `<div class="callout next-season"><div><b>Temporada encerrada</b><span>${c.nextSeasonId && Store.d.comps.some(x => x.id === c.nextSeasonId) ? 'A próxima edição já foi criada com os acessos e descensos.' : 'Crie a próxima edição: as ligas já saem montadas com quem subiu e quem caiu, e esta temporada continua salva.'}</span></div>
       ${c.nextSeasonId && Store.d.comps.some(x => x.id === c.nextSeasonId) ? `<a class="btn btn-dark btn-sm" href="#/c/${c.nextSeasonId}">Abrir próxima temporada</a>` : `<button class="btn btn-lime btn-sm" data-act="nextSeason">Criar próxima temporada</button>`}</div>` : ''}
-    ${c.reg && Reg.awaiting(c) >= 0 ? `<div class="callout"><div><b>${esc(c.spec[Reg.awaiting(c)].name)} prontos para começar.</b> Confirme os ${c.spec[Reg.awaiting(c)].confirm.count} clubes que entram nesta fase (${esc(c.spec[Reg.awaiting(c)].confirm.label)}).</div><button class="btn btn-dark btn-sm" data-act="compTab" data-v="p${Reg.awaiting(c)}">Revisar e confirmar</button></div>` : ''}
+    ${c.reg && Reg.awaiting(c) >= 0 ? `<div class="callout"><div><b>${esc(c.spec[Reg.awaiting(c)].name)}: falta confirmar.</b> Confirme ${c.spec[Reg.awaiting(c)].confirm.kind ? 'as' : 'os'} ${c.spec[Reg.awaiting(c)].confirm.count} ${c.spec[Reg.awaiting(c)].confirm.kind ? 'seleções' : 'clubes'} que entram nesta fase (${esc(c.spec[Reg.awaiting(c)].confirm.label)}).</div><button class="btn btn-dark btn-sm" data-act="compTab" data-v="p${Reg.awaiting(c)}">Revisar e confirmar</button></div>` : ''}
     <div class="tabs" role="tablist">${compTabs(c).map(([k, l]) => `<button role="tab" class="${S.tab === k ? 'on' : ''}" data-act="compTab" data-v="${k}">${l}</button>`).join('')}</div>
     ${body}
   </div></section>`;
@@ -1218,9 +1250,9 @@ function openMatchModal(c, id, animateIt) {
     ${live ? playbarHTML() : ''}
     <div class="result" style="margin-top:0"><div id="mBoard">${live ? '' : boardHTML(m, 120, true, ctx)}</div><div id="mStats">${live ? '' : statsHTML([m])}</div></div>`, 'wide');
   if (live) {
-    UI.anim = animate(m, (min, fin) => { const b = $('#mBoard'); if (b) b.innerHTML = boardHTML(m, min, fin, ctx); }, () => { const s = $('#mStats'); if (s) s.innerHTML = statsHTML([m]); });
+    UI.anim = animate(m, (min, fin) => { const b = $('#mBoard'); if (b) b.innerHTML = boardHTML(m, min, fin, ctx); }, () => { const s = $('#mStats'); if (s) s.innerHTML = statsHTML([m]); flushRender(); });
     syncPlaybar();
-  }
+  } else flushRender();
 }
 
 /* ---------- Clubes ---------- */
@@ -1355,13 +1387,15 @@ const stepLabel = c => { try { return c.reg ? Reg.currentLabel(c) : 'rodada'; } 
 
 /* ================= Ações ================= */
 const saveComp = () => { Store.save(); render(); };
+const lockedComp = c => !!(c && c.cycle && WC.isLocked(Store.d, c));
+const lockedMsg = () => toast('Etapa encerrada: a seguinte já começou. Use o Desfazer do painel do ciclo.');
 const currentComp = () => {
   const id = location.hash.split('/')[2];
   return Store.d.comps.find(c => c.id === id);
 };
 
 const Actions = {
-  close: () => { stopAnim(); Modal.close(); },
+  close: () => { const back = UI.picker && UI.picker.back && Modal.renderFn === pickerHTML ? UI.picker.back : null; stopAnim(); Modal.close(); if (back) { UI.picker = null; back(); } },
   setSpeed: el => {
     Store.d.settings.speed = el.dataset.v; Store.save();
     if (el.dataset.v === 'instant' && UI.anim && !UI.anim.done) { UI.skipAll = true; UI.anim.skip(); }
@@ -1470,7 +1504,7 @@ const Actions = {
   },
   compTab: el => { UI.comp[currentComp().id].tab = el.dataset.v; render(); },
   compStep: () => {
-    const c0 = currentComp(); pushUndo(c0, stepLabel(c0));
+    const c0 = currentComp(); if (lockedComp(c0)) return lockedMsg(); pushUndo(c0, stepLabel(c0));
     const c = c0; const label = Engine.step(c);
     if (!label) undoStack(c).pop(); else undoStack(c)[undoStack(c).length - 1].label = label.replace(/<[^>]+>/g, '');
     UI.comp[c.id].date = null;
@@ -1482,8 +1516,8 @@ const Actions = {
     saveComp();
   },
   compAll: () => {
-    const c = currentComp(); pushUndo(c, 'simular até o fim'); Engine.simulateAll(c); UI.comp[c.id].date = null;
-    if (c.reg && UI.comp[c.id].tab[0] === 'p' && UI.comp[c.id].tab !== 'prob') UI.comp[c.id].tab = 'p' + c.champSpec.phase;
+    const c = currentComp(); if (lockedComp(c)) return lockedMsg(); pushUndo(c, 'simular até o fim'); Engine.simulateAll(c); UI.comp[c.id].date = null;
+    if (c.reg && !c.noChamp && UI.comp[c.id].tab[0] === 'p' && UI.comp[c.id].tab !== 'prob') UI.comp[c.id].tab = 'p' + c.champSpec.phase;
     const aw = c.reg ? Reg.awaiting(c) : -1;
     if (aw >= 0) { UI.comp[c.id].tab = 'p' + aw; toast(`Simulado até a fase <b>${esc(c.spec[aw].name)}</b>: confirme os clubes que entram nela para continuar.`); }
     else if (c.champion) toast(`<b>${esc(nameOf(c.champion))}</b> é campeão.`);
@@ -1492,7 +1526,11 @@ const Actions = {
   probRun: el => { const c = currentComp(); runProb(c, +el.dataset.n); render(); },
   guestSlot: el => {
     const c = currentComp(), i = +el.dataset.phase, role = c.spec[i].confirm.role, k = +el.dataset.i;
-    const inComp = new Set(Object.values(c.entries).flat());
+    let inComp = new Set(Object.values(c.entries).flat());
+    if (c.spec[i].confirm.kind === 'nl') {
+      const N = WC.nlState(c); if (!N) return;
+      inComp = new Set(Teams.list.filter(t => !N.eligible.includes(t.id) || c.entries[role].includes(t.id)).map(t => t.id));
+    }
     openPicker(id => { c.entries[role][k] = id; Store.save(); Modal.close(); render(); }, c.entries[role][k], inComp);
   },
   guestConfirm: el => {
@@ -1501,12 +1539,12 @@ const Actions = {
     toast(`<b>${esc(c.spec[i].name)}</b> montados.`);
   },
   compClear: () => {
-    const c = currentComp();
+    const c = currentComp(); if (lockedComp(c)) return lockedMsg();
     if (!confirm('Apagar todos os resultados desta competição? O sorteio é mantido.')) return;
     pushUndo(c, 'limpar resultados'); Engine.clearResults(c); UI.comp[c.id].date = null; saveComp();
   },
   compRedraw: () => {
-    const c = currentComp();
+    const c = currentComp(); if (lockedComp(c)) return lockedMsg();
     if (!confirm('Fazer um novo sorteio? Todos os resultados serão apagados.')) return;
     pushUndo(c, 'novo sorteio'); Engine.redraw(c); UI.comp[c.id].date = null; saveComp(); toast('Novo sorteio feito.');
   },
@@ -1516,15 +1554,15 @@ const Actions = {
     Store.d.comps = Store.d.comps.filter(x => x.id !== c.id); Store.save();
     location.hash = '#/competicoes';
   },
-  dateNav: el => { const c = currentComp(); UI.comp[c.id].date += +el.dataset.v; render(); },
+  dateNav: el => { const c = currentComp(); UI.comp[c.id].date = +el.dataset.v; rerenderKeepFocus(); },
   playOne: el => {
-    const c = currentComp();
+    const c = currentComp(); if (lockedComp(c)) return lockedMsg();
     pushUndo(c, `${nameOf((Engine.locate(c, el.dataset.id) || { m: {} }).m.h)} × ${nameOf((Engine.locate(c, el.dataset.id) || { m: {} }).m.a)}`);
-    if (Engine.playOne(c, el.dataset.id)) { Store.save(); render(); openMatchModal(c, el.dataset.id, true); }
+    if (Engine.playOne(c, el.dataset.id)) { Store.save(); UI.pendingRender = true; openMatchModal(c, el.dataset.id, true); }
     else { undoStack(c).pop(); toast('Este jogo ainda não pode ser simulado: termine a fase atual antes.'); }
   },
   openMatch: el => openMatchModal(currentComp(), el.dataset.id, false),
-  compUndo: () => undoComp(currentComp()),
+  compUndo: () => { const c = currentComp(); if (lockedComp(c)) return lockedMsg(); undoComp(c); },
   nextSeason: () => {
     const c = currentComp(), t = tplOf(c), ns = t && t.nextSeason;
     if (!ns || !Reg.finished(c)) return;
@@ -1602,6 +1640,10 @@ const Inputs = {
     if (type !== 'change' || !el.value) return;
     const c = currentComp(), i = +el.dataset.phase, role = c.spec[i].confirm.role;
     const L = Store.d.comps.find(x => x.id === el.value);
+    if (c.spec[i].confirm.kind === 'nl') {
+      if (!WC.importNL(c, L)) { toast('Essa Liga das Nações não tem seleções suficientes fora das 2 primeiras dos grupos.'); el.value = ''; return; }
+      Store.save(); render(); return toast(`Seleções de <b>${esc(L.name)}</b> importadas.`);
+    }
     const ids = Reg.resolve(L, { phase: 0, perGroup: [3, 3] }).filter(id => !Object.entries(c.entries).some(([r, l]) => r !== role && l.includes(id)));
     if (ids.length < c.spec[i].confirm.count) { toast('Essa Libertadores não tem clubes suficientes disponíveis.'); el.value = ''; return; }
     c.entries[role] = ids.slice(0, c.spec[i].confirm.count);
@@ -1617,6 +1659,7 @@ const Inputs = {
   score: (el, type) => {
     if (type !== 'change') return;
     const c = currentComp(); if (!c) return;
+    if (lockedComp(c)) { lockedMsg(); return rerenderKeepFocus(); }
     const id = el.dataset.id;
     const row = el.closest('.game');
     const get = side => { const n = row.querySelector(`[data-side="${side}"]`); return n ? n.value.trim() : ''; };
@@ -1657,7 +1700,7 @@ const Inputs = {
     Modal.refresh();
     const n = $('[data-inp=wizSearch]'); n.focus(); n.setSelectionRange(pos, pos);
   },
-  dateSel: el => { UI.comp[currentComp().id].date = +el.value; render(); },
+  dateSel: el => { UI.comp[currentComp().id].date = +el.value; rerenderKeepFocus(); },
   clubSearch: el => {
     UI.clubs.search = el.value;
     const pos = el.selectionStart;
@@ -1740,9 +1783,10 @@ function render() {
   else if (page === 'partida') app.innerHTML = Pages.partida();
   else if (page === 'competicoes') app.innerHTML = Pages.competicoes();
   else if (page === 'c') app.innerHTML = Pages.comp(parts[1]);
+  else if (page === 'copa') app.innerHTML = Pages.copa(parts[1]);
   else if (page === 'clubes') app.innerHTML = Pages.clubes();
   else app.innerHTML = Pages.home();
-  document.querySelectorAll('#navlinks a').forEach(a => a.classList.toggle('active', a.dataset.r === (page === 'c' ? 'competicoes' : page)));
+  document.querySelectorAll('#navlinks a').forEach(a => a.classList.toggle('active', a.dataset.r === (page === 'c' ? (((Store.d.comps.find(x => x.id === parts[1]) || {}).cycle) ? 'copa' : 'competicoes') : page)));
   if (page === '') heroDemo();
   // gráfico de evolução: em telas estreitas, rola até a rodada atual
   const ew = document.querySelector('.evo-wrap');
@@ -1752,6 +1796,7 @@ function render() {
 window.addEventListener('hashchange', () => { Modal.close(); render(); window.scrollTo(0, 0); });
 window.addEventListener('scroll', () => $('#nav').classList.toggle('scrolled', window.scrollY > 8), { passive: true });
 
+wcInit();
 Store.load();
 Teams.refresh();
 Engine.configure({ getTeam: id => Teams.get(id), settings: Store.d.settings });
