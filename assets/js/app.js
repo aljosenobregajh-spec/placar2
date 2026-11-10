@@ -529,10 +529,11 @@ function compBadge(c, size = 40) {
   if (cr) return `<span class="crest" style="--s:${size}px"><img src="${esc(cr)}" alt=""></span>`;
   return `<span class="tpl" style="all:unset;display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:12px;background:var(--lime-3);color:var(--grass)"><span style="width:${size * .5}px;height:${size * .5}px;display:block">${FORMAT_ICON[c.format] || I.trophy}</span></span>`;
 }
+const dispName = c => (c.cycle ? c.name.replace(/ · Copa do Mundo.*$/, '') : c.name);
 function compCard(c) {
   const p = Engine.progress(c);
   return `<a class="comp-card" href="#/c/${c.id}">
-    <div class="t">${compBadge(c)}<div><h4>${esc(c.name)}</h4><div class="f">${esc(compFormatLine(c))}</div></div></div>
+    <div class="t">${compBadge(c)}<div><h4>${esc(dispName(c))}</h4><div class="f">${esc(compFormatLine(c))}</div></div></div>
     <div class="progress"><span style="width:${p * 100}%"></span></div>
     <div class="foot">${c.champion ? `<span class="champ-tag">${crest(c.champion, 20)} Campeão: ${esc(nameOf(c.champion))}</span>` : `<span>${Math.round(p * 100)}% concluído</span>`}<span>${new Date(c.created).toLocaleDateString('pt-BR')}</span></div>
   </a>`;
@@ -1195,7 +1196,7 @@ Pages.comp = id => {
     <div class="comp-hero">
       <div class="badge ${compCrest(c) ? '' : 'plain'}">${compCrest(c) ? `<img src="${esc(compCrest(c))}" alt="">` : FORMAT_ICON[c.format] || I.trophy}</div>
       <div>
-        <h1>${esc(c.name)}</h1>
+        <h1>${esc(dispName(c))}</h1>
         <div class="f">${esc(compFormatLine(c))} · ${Engine.finished(c) ? 'encerrada' : `fase atual: ${esc(c.reg ? Reg.currentLabel(c) : (st.type === 'knockout' ? st.rounds[st.rounds.length - 1].name : st.name))}`}</div>
         <div class="progress"><span style="width:${p * 100}%"></span></div>
       </div>

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/style.css?v=7">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#E9ECE4">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -42,17 +42,22 @@
     </div>
   </footer>
 
-  <script src="assets/js/data.js"></script>
-  <script src="assets/js/nations.js"></script>
-  <script src="assets/js/engine.js"></script>
-  <script src="assets/js/reg.js"></script>
-  <script src="assets/js/templates.js"></script>
-  <script src="assets/js/worldcup.js"></script>
-  <script src="assets/js/wc-ui.js"></script>
-  <script src="assets/js/app.js"></script>
+  <script src="assets/js/data.js?v=7"></script>
+  <script src="assets/js/nations.js?v=7"></script>
+  <script src="assets/js/engine.js?v=7"></script>
+  <script src="assets/js/reg.js?v=7"></script>
+  <script src="assets/js/templates.js?v=7"></script>
+  <script src="assets/js/worldcup.js?v=7"></script>
+  <script src="assets/js/wc-ui.js?v=7"></script>
+  <script src="assets/js/app.js?v=7"></script>
   <script>
     // instalação como app (só funciona quando o site está publicado, não ao abrir o arquivo direto)
-    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      // quando chega uma versão nova, recarrega uma vez para não misturar arquivos antigos com novos
+      const had = !!navigator.serviceWorker.controller; let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !reloaded) { reloaded = true; location.reload(); } });
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+    }
   </script>
 </body>
 </html>

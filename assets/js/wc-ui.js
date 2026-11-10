@@ -50,15 +50,15 @@ function wcHallHTML(series) {
   const done = H.eds.filter(e => e.p).reverse();
   const sim = done.some(e => !e.real);
   return `<p class="hint" style="margin-bottom:12px">Seleções que já terminaram uma Copa entre as três primeiras, desde 1930. ${sim ? 'As Copas simuladas deste ciclo entram na conta depois do histórico real.' : 'Quando a Copa deste ciclo terminar, ela entra na conta.'}</p>
-    <div class="table-wrap"><table class="tbl">
+    <div class="table-wrap"><table class="tbl wc-hall">
       <thead><tr><th>#</th><th class="l">Seleção</th><th>Títulos</th><th class="l">Anos</th><th>Vices</th><th>3º lugar</th></tr></thead>
-      <tbody>${H.rows.map((r, i) => `<tr><td class="pos">${i + 1}</td><td class="l"><span class="team">${crest(r.id, 24)}${esc(nameOf(r.id))}</span></td>
+      <tbody>${H.rows.map((r, i) => `<tr><td class="pos">${i + 1}</td><td class="l"><span class="team">${crest(r.id, 24)}<span>${esc(nameOf(r.id))}${r.titles.length ? `<small class="wc-yrs">${r.titles.join(', ')}</small>` : ''}</span></span></td>
         <td class="pts">${r.titles.length || '–'}</td><td class="l">${r.titles.join(', ') || '–'}</td><td>${r.second || '–'}</td><td>${r.third || '–'}</td></tr>`).join('')}</tbody></table></div>
     <div class="section-head" style="margin-top:28px"><h3>Edições</h3></div>
-    <div class="table-wrap"><table class="tbl">
+    <div class="table-wrap"><table class="tbl wc-eds">
       <thead><tr><th class="l">Copa</th><th class="l">Sedes</th><th class="l">Campeã</th><th class="l">Vice</th><th class="l">3º lugar</th></tr></thead>
       <tbody>${done.map(e => `<tr><td class="l">${e.real ? e.year : `<a href="#/copa/${e.cy.id}">${e.year}</a> <span class="lg-tag">simulada</span>`}</td><td class="l">${esc(e.real ? e.hosts : e.cy.hosts.map(shortOf).join(', '))}</td>
-        ${[e.p.champion, e.p.runnerUp, e.p.third].map(id => `<td class="l"><span class="team">${crest(id, 22)}${esc(nameOf(id))}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+        ${[e.p.champion, e.p.runnerUp, e.p.third].map(id => `<td class="l"><span class="team">${crest(id, 22)}<span class="nm-l">${esc(nameOf(id))}</span><span class="nm-s">${esc(shortOf(id))}</span></span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 function wcListPage() {
   const cycles = (Store.d.cycles || []).slice().sort((a, b) => b.created - a.created);

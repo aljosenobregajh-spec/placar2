@@ -1,7 +1,7 @@
 /* Placar — service worker: deixa o site abrir sem internet depois da primeira visita.
    Páginas, estilos e scripts: rede primeiro (pega as atualizações), cópia salva se estiver offline.
    Escudos e fontes: cópia salva primeiro (quase nunca mudam). */
-const VERSION = 'placar-v6';
+const VERSION = 'placar-v7';
 const CORE = ['./', 'index.html', 'assets/css/style.css', 'assets/js/data.js', 'assets/js/nations.js', 'assets/js/engine.js', 'assets/js/reg.js', 'assets/js/templates.js', 'assets/js/worldcup.js', 'assets/js/wc-ui.js', 'assets/js/app.js', 'manifest.webmanifest', 'assets/icons/icon-192.png'];
 
 self.addEventListener('install', e => {
@@ -26,8 +26,8 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (url.origin !== location.origin) return;
-  e.respondWith(fetch(req).then(res => {
+  e.respondWith(fetch(req, { cache: 'no-cache' }).then(res => {
     if (res.ok) caches.open(VERSION).then(c => c.put(req, res.clone()));
     return res;
-  }).catch(() => caches.match(req).then(hit => hit || caches.match('index.html'))));
+  }).catch(() => caches.match(req, { ignoreSearch: true }).then(hit => hit || caches.match('index.html'))));
 });
