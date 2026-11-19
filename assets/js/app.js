@@ -2,18 +2,82 @@
 
 /* ================= Armazenamento ================= */
 const KEY = 'placar.v1';
+// Onde os dados ficam: o banco de dados do navegador (IndexedDB), que aceita centenas de MB.
+// O armazenamento antigo (localStorage, ~5 MB) só é lido uma vez, para trazer os dados de quem já usava o site,
+// e continua como reserva se o navegador não oferecer o banco.
+const DB = {
+  db: null,
+  open() {
+    return new Promise(resolve => {
+      if (!window.indexedDB) return resolve(null);
+      let done = false;
+      const finish = v => { if (!done) { done = true; resolve(v); } };
+      setTimeout(() => finish(null), 4000);
+      try {
+        const req = indexedDB.open('placar', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('kv');
+        req.onsuccess = () => finish(req.result);
+        req.onerror = () => finish(null);
+        req.onblocked = () => finish(null);
+      } catch (e) { finish(null); }
+    });
+  },
+  get(key) {
+    return new Promise(resolve => {
+      try {
+        const r = this.db.transaction('kv', 'readonly').objectStore('kv').get(key);
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => resolve(undefined);
+      } catch (e) { resolve(undefined); }
+    });
+  },
+  put(key, value) {
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = this.db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      } catch (e) { reject(e); }
+    });
+  }
+};
+
 const Store = {
   d: null,
-  load() {
-    let raw = null;
-    try { raw = JSON.parse(localStorage.getItem(KEY)); } catch (e) { raw = null; }
+  where: 'local',
+  async load() {
+    let raw;
+    DB.db = await DB.open();
+    if (DB.db) {
+      raw = await DB.get(KEY);
+      if (raw === undefined) {
+        // primeira vez com o banco novo: traz o que estava no armazenamento antigo
+        try { raw = JSON.parse(localStorage.getItem(KEY)); } catch (e) { raw = null; }
+        if (raw) { try { await DB.put(KEY, raw); localStorage.setItem(KEY + '.migrado', new Date().toISOString()); } catch (e) { DB.db = null; } }
+      }
+      if (DB.db) this.where = 'db';
+    }
+    if (!DB.db) { try { raw = JSON.parse(localStorage.getItem(KEY)); } catch (e) { raw = null; } }
     this.d = Object.assign({ overrides: {}, custom: [], removed: [], comps: [], cycles: [] }, raw || {});
     this.d.settings = Object.assign({ chaos: 25, homeAdv: 1, goals: 1, altitude: 1, speed: 'normal' }, (raw && raw.settings) || {});
+    // pede ao navegador para não apagar os dados sozinho quando o aparelho ficar sem espaço
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}
   },
   save() {
     try { WC.syncAll(this.d); } catch (e) { console.error(e); }
+    if (this.where === 'db' && DB.db) {
+      DB.put(KEY, this.d).catch(() => toast('Não foi possível salvar: o espaço do navegador acabou ou foi bloqueado.'));
+      return;
+    }
     try { localStorage.setItem(KEY, JSON.stringify(this.d)); }
     catch (e) { toast('Não foi possível salvar: o armazenamento do navegador está cheio ou bloqueado.'); }
+  },
+  // quanto o site está usando e quanto o navegador permite (estimativa do próprio navegador)
+  async usage() {
+    try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); return { used: e.usage || 0, quota: e.quota || 0 }; } } catch (e) {}
+    return null;
   }
 };
 
@@ -1835,6 +1899,7 @@ document.addEventListener('click', e => {
 
 /* ================= Rotas ================= */
 function render() {
+  if (!Store.d) return;   // ainda carregando os dados
   if (UI.hero) { UI.hero.stop(); UI.hero = null; }
   stopAnim();
   const parts = location.hash.replace(/^#\/?/, '').split('/');
@@ -1862,7 +1927,18 @@ window.addEventListener('hashchange', () => { Modal.close(); render(); window.sc
 window.addEventListener('scroll', () => $('#nav').classList.toggle('scrolled', window.scrollY > 8), { passive: true });
 
 wcInit();
-Store.load();
-Teams.refresh();
-Engine.configure({ getTeam: id => Teams.get(id), settings: Store.d.settings });
-render();
+(async () => {
+  await Store.load();
+  Teams.refresh();
+  Engine.configure({ getTeam: id => Teams.get(id), settings: Store.d.settings });
+  render();
+  showUsage();
+})();
+// rodapé: espaço usado pelos dados (estimativa do navegador)
+async function showUsage() {
+  const el = document.getElementById('footUse'), u = await Store.usage();
+  if (!el || !u || !u.quota) return;
+  const mb = b => (b / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: b < 10485760 ? 1 : 0 });
+  const quota = u.quota >= 1073741824 ? `${(u.quota / 1073741824).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} GB` : `${mb(u.quota)} MB`;
+  el.textContent = Store.where === 'db' ? ` (${mb(u.used)} MB usados de ${quota} disponíveis)` : ' (modo antigo, limite de cerca de 5 MB)';
+}
