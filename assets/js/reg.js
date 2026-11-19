@@ -281,6 +281,8 @@ const Reg = (() => {
       st.rounds = swissRounds(st.groups[0].teams.slice().sort((x, y) => E.ovr(T(y)) - E.ovr(T(x))), spec.swiss);
     } else if (spec.cross) {
       st.rounds = crossRounds(st.groups);
+      // ida e volta contra o outro grupo: o returno inverte o mando
+      if (spec.legs === 2) st.rounds = st.rounds.concat(st.rounds.map(rd => rd.map(m => E.newMatch(m.a, m.h))));
     } else {
       const per = st.groups.map((g, gi) => {
         const legs = spec.legsEach ? spec.legsEach[gi] : spec.legs;

@@ -947,11 +947,14 @@ function groupsLiveHTML(c, tab, groups, after = '') {
   if (!R) return `<div class="groups-grid ${many}">${groups.map(g => `<div><h4>${esc(g.name)}</h4>${g.table}</div>`).join('')}</div>${after}`;
   const gOf = {};
   groups.forEach(g => g.teams.forEach(id => { gOf[id] = g.name; }));
+  // jogos entre clubes de grupos diferentes (ex.: fórmula em que um grupo enfrenta o outro) ficam num bloco próprio
+  const cross = R.d.items.filter(x => gOf[x.m.h] !== gOf[x.m.a]);
+  const crossHTML = cross.length ? `<div class="grp-cross"><h4>Jogos entre os grupos</h4><div class="games cmp two">${cross.map(x => gameRow(x, c)).join('')}</div></div>` : '';
   return `${R.nav}
     <div class="groups-grid live-groups ${many}">${groups.map(g => {
-      const items = R.d.items.filter(x => (gOf[x.m.h] || gOf[x.m.a]) === g.name);
+      const items = R.d.items.filter(x => gOf[x.m.h] === g.name && gOf[x.m.a] === g.name);
       return `<div class="grp-card"><h4>${esc(g.name)}</h4>${g.table}${items.length ? `<div class="games cmp">${items.map(x => gameRow(x, c)).join('')}</div>` : ''}</div>`;
-    }).join('')}</div>${after}
+    }).join('')}</div>${crossHTML}${after}
     ${Engine.finished(c) ? '' : '<p class="hint" style="margin-top:14px">Digite o placar ou use o dado embaixo de cada grupo: a tabela muda na hora. Para desfazer, apague os dois números.</p>'}`;
 }
 // tabela (ou chave) + jogos da rodada na mesma aba
