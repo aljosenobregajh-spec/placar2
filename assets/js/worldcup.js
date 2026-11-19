@@ -277,8 +277,9 @@ const WC = (() => {
     CONFS.forEach(c => {
       const comp = part(d, cy, c.k), q = cy.quotas[c.k];
       const r = comp ? ready(comp, comp.wc.direct) : { ids: [], all: true }, p = comp ? ready(comp, comp.wc.playoff) : { ids: [], all: true };
-      S.confs[c.k] = { comp, d: q.d, p: q.p, direct: r.ids, playoff: p.ids, done: !comp || Reg.finished(comp), awaiting: comp ? Reg.awaiting(comp) >= 0 : false };
-      S.qualified.push(...r.ids); S.poTeams.push(...p.ids);
+      const cl = comp && !Reg.finished(comp) ? comp.wc.direct.flatMap(o => clinched(comp, o.src)).filter(id => !r.ids.includes(id)) : [];
+      S.confs[c.k] = { comp, d: q.d, p: q.p, direct: [...r.ids, ...cl], clinched: cl, playoff: p.ids, done: !comp || Reg.finished(comp), awaiting: comp ? Reg.awaiting(comp) >= 0 : false };
+      S.qualified.push(...r.ids, ...cl); S.poTeams.push(...p.ids);
       if (comp && !Reg.finished(comp)) S.poReady = false;
     });
     S.playoff = part(d, cy, 'playoff'); S.finals = part(d, cy, 'finals');
@@ -510,6 +511,63 @@ const WC = (() => {
     const rows = Object.values(tally).sort((a, b) => b.titles.length - a.titles.length || b.second - a.second || b.third - a.third || nm(a.id).localeCompare(nm(b.id)));
     return { eds, rows };
   }
+
+  /* ---------- participações em Copas ---------- */
+  // reais, de 1930 a 2026 (Alemanha inclui a Ocidental; Sérvia, a Iugoslávia; Rússia, a URSS; Tchéquia, a Tchecoslováquia)
+  const APPS0 = Object.fromEntries('brazil 23,germany 21,argentina 19,italy 18,mexico 18,spain 17,england 17,france 17,belgium 15,uruguay 15,switzerland 13,sweden 13,serbia 13,south-korea 12,usa 12,netherlands 12,russia 11,czechia 10,portugal 9,scotland 9,paraguay 9,hungary 9,poland 9,slovakia 1,chile 9,japan 8,cameroon 8,austria 8,australia 7,croatia 7,iran 7,saudi-arabia 7,bulgaria 7,morocco 7,tunisia 7,colombia 7,romania 7,costa-rica 6,nigeria 6,denmark 6,ghana 5,ecuador 5,algeria 5,peru 5,senegal 4,cote-d-ivoire 4,norway 4,south-africa 4,egypt 4,canada 3,northern-ireland 3,honduras 3,republic-of-ireland 3,greece 3,turkey 3,new-zealand 3,bolivia 3,qatar 2,dr-congo 2,bosnia-and-herzegovina 2,haiti 2,iraq 2,panama 2,wales 2,north-korea 2,el-salvador 2,slovenia 2,cabo-verde 1,curacao 1,jordan 1,uzbekistan 1,cuba 1,indonesia 1,israel 1,kuwait 1,united-arab-emirates 1,jamaica 1,china 1,angola 1,togo 1,trinidad-and-tobago 1,ukraine 1,iceland 1'.split(',').map(x => { const [k, n] = x.split(' '); return ['sel-' + k, +n]; }));
+  const cupTeams = (d, cy) => { const fin = part(d, cy, 'finals'); return fin ? fin.stages[0].groups.flatMap(g => g.teams) : []; };
+  // participações de cada seleção ANTES deste ciclo (histórico real + Copas simuladas anteriores da mesma série)
+  function appsBefore(d, cy) {
+    const cnt = { ...APPS0 };
+    (d.cycles || []).filter(x => x.series === cy.series && x.year < cy.year).forEach(x => cupTeams(d, x).forEach(id => { cnt[id] = (cnt[id] || 0) + 1; }));
+    return cnt;
+  }
+  function appearances(d, cy) {
+    const before = appsBefore(d, cy), S = status(d, cy), now = new Set(S.finals ? cupTeams(d, cy) : S.qualified);
+    const ids = new Set([...Object.keys(before), ...now]);
+    const rows = [...ids].filter(id => base(id)).map(id => ({ id, n: (before[id] || 0) + (now.has(id) ? 1 : 0), now: now.has(id), debut: now.has(id) && !before[id] }))
+      .filter(r => r.n > 0).sort((a, b) => b.n - a.n || nm(a.id).localeCompare(nm(b.id)));
+    return { before, rows };
+  }
+
+  /* ---------- vaga garantida antes do fim (ninguém mais alcança) ---------- */
+  // vale para vagas por posição num grupo de pontos corridos: os N primeiros de cada grupo ou da tabela única
+  function clinched(comp, src) {
+    if (!src || src.phase == null || src.list) return [];
+    const st = comp.stages[src.phase];
+    if (!st || st.type !== 'rr' || Reg.stageDone(comp, src.phase)) return [];
+    let k;
+    if (src.pos) { if (src.pos[0] !== 1 || st.groups.length !== 1) return []; k = src.pos[1]; }
+    else if (src.perGroup) {
+      if (src.perGroup[0] !== 1) return [];
+      k = src.perGroup[1];
+      if (src.take) { if (src.take[0] !== 0) return []; k = Math.min(k, Math.floor(src.take[1] / st.groups.length)); }
+    } else return [];
+    if (!(k >= 1)) return [];
+    const rem = {};
+    st.rounds.flat().forEach(m => { if (!m.played) { rem[m.h] = (rem[m.h] || 0) + 1; rem[m.a] = (rem[m.a] || 0) + 1; } });
+    const out = [];
+    st.groups.forEach((g, gi) => {
+      const rows = Reg.rank(comp, src.phase, gi);
+      // garantida no top k se no máximo k-1 rivais ainda conseguem chegar aos pontos que ela já tem
+      rows.slice(0, k).forEach(r => { if (rows.filter(y => y.id !== r.id && y.p + 3 * (rem[y.id] || 0) >= r.p).length < k) out.push(r.id); });
+    });
+    return out;
+  }
+
+  /* ---------- força das seleções acompanha o ranking do ciclo ---------- */
+  // cada 100 pontos ganhos (ou perdidos) em relação ao ranking FIFA real valem 3 de força, até 8 para cima ou para baixo
+  const PTS_TO_OVR = 3 / 100, BOOST_MAX = 8;
+  function boost(d, cy) {
+    const R = ranking(d, cy), out = {};
+    Object.keys(R.pts).forEach(id => {
+      const b0 = base(id);
+      if (!b0 || !b0.fifaPts) return;
+      const v = Math.max(-BOOST_MAX, Math.min(BOOST_MAX, (R.pts[id] - b0.fifaPts) * PTS_TO_OVR));
+      if (Math.abs(v) >= 0.25) out[id] = Math.round(v * 2) / 2;
+    });
+    return out;
+  }
   // deixa mais leve um ciclo já encerrado (tira a narração dos jogos; os placares ficam)
   function compact(d, cy) {
     compsOf(d, cy).forEach(c => Engine.allMatches(c).forEach(m => { delete m.ev; delete m.st; }));
@@ -520,5 +578,5 @@ const WC = (() => {
   }
 
   return { CONFS, CUP_LOGO, TROPHY, MAX_HOSTS, LIMITS, confOf, members, allNations, suggestQuotas, validateQuotas, createCycle, status, sync, syncAll, isLocked, drawFinals, undrawFinals,
-    stepAll, runStage, pending, prepare, nlState, importNL, ranking, baseRank, podium, hall, compact, removeCycle, compsOf, part, played };
+    stepAll, runStage, pending, prepare, nlState, importNL, ranking, baseRank, podium, hall, compact, appsBefore, appearances, clinched, boost, BOOST_MAX, removeCycle, compsOf, part, played };
 })();

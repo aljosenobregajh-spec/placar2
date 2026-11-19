@@ -121,22 +121,26 @@ function wcWizardHTML() {
 }
 
 /* ---------- painel do ciclo ---------- */
-function wcSlots(ids, total, cls = '') {
+// A: participações antes deste ciclo (mostra a nº desta Copa; estreante ganha estrela)
+function wcSlots(ids, total, cls = '', A = null) {
   let h = '';
   for (let i = 0; i < total; i++) {
     const id = ids[i];
-    h += id ? `<span class="wc-slot on ${cls}" title="${esc(nameOf(id))}">${crest(id, 30)}<small>${esc(shortOf(id))}</small></span>` : `<span class="wc-slot ${cls}"><i></i><small>&nbsp;</small></span>`;
+    const n = A && id ? (A[id] || 0) + 1 : 0;
+    const tip = id ? `${nameOf(id)}${A ? (n === 1 ? ' · estreia em Copas' : ` · ${n}ª Copa`) : ''}` : '';
+    const tag = A && id ? (n === 1 ? '<em class="wc-n debut" aria-hidden="true">★</em>' : `<em class="wc-n" aria-hidden="true">${n}</em>`) : '';
+    h += id ? `<span class="wc-slot on ${cls}" title="${esc(tip)}"><span class="wc-c">${crest(id, 30)}${tag}</span><small>${esc(shortOf(id))}</small></span>` : `<span class="wc-slot ${cls}"><i></i><small>&nbsp;</small></span>`;
   }
   return h;
 }
 function wcPathHTML(cy, S) {
-  const fin = S.finals;
+  const fin = S.finals, A = WC.appsBefore(Store.d, cy);
   const blocks = WC.CONFS.map(c => {
     const x = S.confs[c.k], hosts = cy.hosts.filter(id => WC.confOf(id) === c.k);
     return `<div class="wc-block">
       <div class="wc-block-h"><img src="${c.logo}" alt=""><div><h4>${esc(c.name)}</h4><span>${x.direct.length + hosts.length} de ${x.d + hosts.length} na Copa${x.comp ? '' : ' · sem eliminatórias'}</span></div>
         ${x.comp ? `<a class="btn btn-ghost btn-sm" href="#/c/${x.comp.id}">Abrir</a>` : ''}</div>
-      <div class="wc-slots">${wcSlots(hosts, hosts.length, 'host')}${wcSlots(x.direct, x.d)}</div>
+      <div class="wc-slots">${wcSlots(hosts, hosts.length, 'host', A)}${wcSlots(x.direct, x.d, '', A)}</div>
       ${x.p ? `<div class="wc-po"><span>Repescagem mundial</span><div class="wc-slots">${wcSlots(x.playoff, x.p, 'po')}</div></div>` : ''}
       ${x.comp ? `<div class="wc-block-f">${x.awaiting ? '<b>Falta confirmar as seleções da Liga das Nações</b>' : x.done ? 'Encerradas' : esc(Reg.currentLabel(x.comp))}</div>` : ''}
     </div>`;
@@ -144,14 +148,31 @@ function wcPathHTML(cy, S) {
   const po = `<div class="wc-block">
       <div class="wc-block-h"><span class="wc-badge ${WC.TROPHY ? 'img' : ''}">${WC.TROPHY ? `<img src="${WC.TROPHY}" alt="">` : I.bracket}</span><div><h4>Repescagem mundial</h4><span>${S.poWinners.length} de 2 na Copa</span></div>
         ${S.playoff ? `<a class="btn btn-ghost btn-sm" href="#/c/${S.playoff.id}">Abrir</a>` : ''}</div>
-      <div class="wc-slots">${wcSlots(S.poWinners, 2)}</div>
+      <div class="wc-slots">${wcSlots(S.poWinners, 2, '', A)}</div>
       <div class="wc-po"><span>Disputam</span><div class="wc-slots">${wcSlots(S.playoff ? S.playoff.entries.teams : S.poTeams, 6, 'po')}</div></div>
       <div class="wc-block-f">${S.playoff ? (Reg.finished(S.playoff) ? 'Encerrada' : esc(Reg.currentLabel(S.playoff))) : 'Montada quando todas as eliminatórias terminarem'}</div>
     </div>`;
   const groups = fin ? `<div class="section-head" style="margin-top:34px"><h3>Grupos da Copa</h3><span class="aside"><a href="#/c/${fin.id}">Abrir a Copa</a></span></div>
     <div class="wc-groups">${fin.stages[0].groups.map((g, gi) => `<div class="wc-group"><h5>${esc(g.name)}</h5>${Reg.rank(fin, 0, gi).map(r => `<span class="team">${crest(r.id, 22)}${esc(nameOf(r.id))}${cy.hosts.includes(r.id) ? '<em>sede</em>' : ''}<b>${r.j ? r.p : ''}</b></span>`).join('')}</div>`).join('')}</div>` : '';
-  return `<div class="wc-count"><b>${S.qualified.length}</b> de 48 seleções classificadas</div>
-    <div class="wc-grid">${blocks}${po}</div>${groups}`;
+  const debuts = S.qualified.filter(id => !A[id]).length;
+  const early = WC.CONFS.reduce((n, c) => n + S.confs[c.k].clinched.length, 0);
+  return `<div class="wc-count"><b>${S.qualified.length}</b> de 48 seleções classificadas${debuts ? `<span class="wc-debuts"><em>★</em> ${debuts} estreante${debuts > 1 ? 's' : ''}</span>` : ''}</div>
+    <p class="hint wc-key">O número no escudo é a participação em Copas (contando esta); a estrela marca quem estreia.${early ? ` ${early === 1 ? 'Uma seleção já aparece classificada' : `${early} seleções já aparecem classificadas`} antes do fim das eliminatórias porque ninguém mais alcança.` : ''}</p>
+    <div class="wc-grid">${blocks}${po}</div>${groups}${fin ? wcThirdsHTML(fin) : ''}`;
+}
+// panorama dos 3ºs colocados da fase de grupos da Copa (os 8 melhores avançam)
+function wcThirdsHTML(fin) {
+  const st = fin.stages[0];
+  if (!st || !st.rounds.flat().some(m => m.played)) return '';
+  const rows = st.groups.map((g, gi) => ({ ...Reg.rank(fin, 0, gi)[2], g: g.name.replace('Grupo ', '') }))
+    .sort((x, y) => y.p - x.p || y.sg - x.sg || y.gp - x.gp || y.v - x.v);
+  const done = Reg.stageDone(fin, 0);
+  return `<div class="section-head" style="margin-top:34px"><h3>Os 3ºs colocados</h3><span class="aside">Os 8 melhores avançam aos 16 avos${done ? '' : ' · parcial'}</span></div>
+    <div class="table-wrap"><table class="tbl wc-thirds">
+      <thead><tr><th>#</th><th class="l">Seleção</th><th>Grupo</th><th>P</th><th>J</th><th>SG</th><th>GP</th></tr></thead>
+      <tbody>${rows.map((r, i) => `<tr class="${i === 8 ? 'cut' : ''}"><td class="pos" style="--zc:${i < 8 ? ZONE_COLORS.lib : 'transparent'}">${i + 1}</td>
+        <td class="l"><span class="team">${crest(r.id, 22)}${esc(nameOf(r.id))}</span></td><td>${esc(r.g)}</td><td class="pts">${r.p}</td><td>${r.j}</td><td>${r.sg > 0 ? '+' : ''}${r.sg}</td><td>${r.gp}</td></tr>`).join('')}</tbody></table></div>
+    <p class="hint" style="margin-top:10px">Critérios: pontos, saldo de gols, gols marcados e vitórias.</p>`;
 }
 function wcStagesHTML(cy, S) {
   const cards = WC.CONFS.map(c => S.confs[c.k].comp).filter(Boolean).map(compCard).join('');
@@ -161,21 +182,31 @@ function wcStagesHTML(cy, S) {
     <div class="comp-list">${S.playoff ? compCard(S.playoff) : ph('Repescagem mundial', 'Montada quando todas as eliminatórias terminarem')}
       ${S.finals ? compCard(S.finals) : ph(esc(cy.name), 'Os grupos são sorteados depois da repescagem mundial')}</div>`;
 }
+function wcAppsHTML(cy) {
+  const { rows } = WC.appearances(Store.d, cy);
+  const debut = rows.filter(r => r.debut);
+  return `<p class="hint" style="margin-bottom:12px">Participações em Copas desde 1930, somando as Copas simuladas desta série. ${cy.prev ? '' : 'O histórico real vai até 2026. '}As seleções já classificadas para esta Copa entram na conta${debut.length ? `; ${debut.length === 1 ? 'uma estreia' : `${debut.length} estreiam`} (<em class="star">★</em>)` : ''}.</p>
+    <div class="table-wrap"><table class="tbl wc-apps">
+      <thead><tr><th>#</th><th class="l">Seleção</th><th>Copas</th><th class="l">Nesta Copa</th></tr></thead>
+      <tbody>${rows.map((r, i) => `<tr><td class="pos">${i + 1}</td><td class="l"><span class="team">${crest(r.id, 24)}${esc(nameOf(r.id))}${r.debut ? ' <em class="star" title="Estreante">★</em>' : ''}</span></td>
+        <td class="pts">${r.n}</td><td class="l">${r.debut ? '<span class="lg-tag debut">Estreia</span>' : r.now ? '<span class="lg-tag">Classificada</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`;
+}
 function wcRankHTML(cy) {
-  const U = UI.wc[cy.id], R = WC.ranking(Store.d, cy);
+  const U = UI.wc[cy.id], R = WC.ranking(Store.d, cy), B = WC.boost(Store.d, cy);
+  const force = id => { const v = B[id] || 0; return v ? `<span class="${v > 0 ? 'wc-up' : 'wc-down'}">${v > 0 ? '+' : '−'}${String(Math.abs(v)).replace('.', ',')}</span>` : '<span class="muted">0</span>'; };
   const rows = R.rows.filter(r => !U.rankConf || WC.confOf(r.id) === U.rankConf);
   const shown = U.rankAll ? rows : rows.slice(0, 50);
-  const arrow = n => (n > 0 ? `<span class="wc-up">▲ ${n}</span>` : n < 0 ? `<span class="wc-down">▼ ${-n}</span>` : '<span class="muted">–</span>');
+  const arrow = n => mvHTML(n).replace(/rodada anterior/g, 'início do ciclo');
   const sign = v => (Math.abs(v) < 0.05 ? '<span class="muted">0</span>' : `<span class="${v > 0 ? 'wc-up' : 'wc-down'}">${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(1).replace('.', ',')}</span>`);
   return `<div class="toolbar"><div class="chips">
       <button class="chip ${!U.rankConf ? 'on' : ''}" data-act="wcRankConf" data-v="">Todas</button>
       ${WC.CONFS.map(c => `<button class="chip ${U.rankConf === c.k ? 'on' : ''}" data-act="wcRankConf" data-v="${c.k}">${esc(c.name)}</button>`).join('')}</div></div>
-    <div class="table-wrap"><table class="tbl">
-      <thead><tr><th>#</th><th>Posições</th><th class="l">Seleção</th><th class="l">Confederação</th><th>Pontos</th><th>No ciclo</th></tr></thead>
+    <div class="table-wrap"><table class="tbl wc-rank">
+      <thead><tr><th>#</th><th>Posições</th><th class="l">Seleção</th><th class="l">Confederação</th><th>Pontos</th><th>No ciclo</th><th title="Ajuste de força aplicado nos jogos deste ciclo">Força</th></tr></thead>
       <tbody>${shown.map(r => `<tr><td class="pos">${r.pos}</td><td>${arrow(r.dpos)}</td><td class="l"><span class="team">${crest(r.id, 24)}${esc(nameOf(r.id))}</span></td>
-        <td class="l"><span class="lg-tag">${esc(wcConf(WC.confOf(r.id)).name)}</span></td><td class="pts">${r.pts.toFixed(1).replace('.', ',')}</td><td>${sign(r.d)}</td></tr>`).join('')}</tbody></table></div>
+        <td class="l"><span class="lg-tag">${esc(wcConf(WC.confOf(r.id)).name)}</span></td><td class="pts">${r.pts.toFixed(1).replace('.', ',')}</td><td>${sign(r.d)}</td><td>${force(r.id)}</td></tr>`).join('')}</tbody></table></div>
     ${rows.length > shown.length ? `<p style="margin-top:14px"><button class="btn btn-line btn-sm" data-act="wcRankAll">Mostrar as ${rows.length} seleções</button></p>` : ''}
-    <p class="hint" style="margin-top:14px">Ranking próprio deste modo: parte ${cy.prev ? 'de como terminou o ciclo anterior' : `do ranking FIFA de ${RANKING_FIFA_DATA}`} e muda a cada jogo pela fórmula da FIFA (o ganho depende da força do adversário). Para equiparar calendários diferentes, nas eliminatórias cada seleção conta no máximo o equivalente a 10 jogos: quem joga 18 partidas tem cada uma pesando menos. Jogos da Copa valem o dobro, e derrota no mata-mata não tira pontos. Este ranking define os potes dos sorteios do ciclo e não altera a força nem o ranking geral das seleções.</p>`;
+    <p class="hint" style="margin-top:14px">Ranking próprio deste modo: parte ${cy.prev ? 'de como terminou o ciclo anterior' : `do ranking FIFA de ${RANKING_FIFA_DATA}`} e muda a cada jogo pela fórmula da FIFA (o ganho depende da força do adversário). Para equiparar calendários diferentes, nas eliminatórias cada seleção conta no máximo o equivalente a 10 jogos: quem joga 18 partidas tem cada uma pesando menos. Jogos da Copa valem o dobro, e derrota no mata-mata não tira pontos. Este ranking define os potes dos sorteios e também a força das seleções nos jogos do ciclo: cada 100 pontos ganhos ou perdidos em relação ao ranking FIFA real valem 3 de força (coluna Força), até ${WC.BOOST_MAX} para cima ou para baixo. Fora do modo Copa nada muda: a força e o ranking geral continuam os mesmos.</p>`;
 }
 
 function wcCyclePage(id) {
@@ -193,7 +224,7 @@ function wcCyclePage(id) {
     : S.stage === 'playoff' ? ['wcStep', 'Simular próxima rodada da repescagem', 'wcRun', 'Simular a repescagem até o fim']
     : S.stage === 'draw' ? ['wcDraw', 'Sortear os grupos da Copa', null, null]
     : S.stage === 'cup' ? ['wcStep', 'Simular próxima rodada da Copa', 'wcRun', 'Simular a Copa até o fim'] : [null, null, null, null];
-  const body = U.tab === 'stages' ? wcStagesHTML(cy, S) : U.tab === 'rank' ? wcRankHTML(cy) : U.tab === 'hall' ? wcHallHTML(cy.series) : wcPathHTML(cy, S);
+  const body = U.tab === 'stages' ? wcStagesHTML(cy, S) : U.tab === 'rank' ? wcRankHTML(cy) : U.tab === 'hall' ? wcHallHTML(cy.series) : U.tab === 'apps' ? wcAppsHTML(cy) : wcPathHTML(cy, S);
   const canRedraw = S.finals && !WC.played(S.finals);
   return `<section class="page"><div class="wrap">
     <a class="back-link" href="#/copa">${I.left} Ciclos de Copa do Mundo</a>
@@ -217,7 +248,7 @@ function wcCyclePage(id) {
     ${p ? `<div class="champion">${crest(p.champion, 64)}<div><small>Campeã do mundo</small><h2>${esc(nameOf(p.champion))}</h2></div><span class="wc-podium">Vice: ${esc(nameOf(p.runnerUp))} · 3º: ${esc(nameOf(p.third))} · 4º: ${esc(nameOf(p.fourth))}</span></div>` : ''}
     ${pend.map(c => `<div class="callout"><div><b>Repescagem europeia: falta confirmar.</b> Os grupos da UEFA terminaram. Confirme as seleções vindas da Liga das Nações para a repescagem continuar.</div><a class="btn btn-dark btn-sm" href="#/c/${c.id}">Revisar e confirmar</a></div>`).join('')}
     ${S.stage === 'draw' ? `<div class="callout"><div><b>As 48 seleções estão definidas.</b> Sorteie os grupos: sedes como cabeças dos primeiros grupos, potes pelo ranking do ciclo e no máximo uma seleção por confederação em cada grupo (UEFA: até duas).</div><button class="btn btn-dark btn-sm" data-act="wcDraw">Sortear os grupos</button></div>` : ''}
-    <div class="tabs" role="tablist">${[['path', 'Caminho para a Copa'], ['stages', 'Etapas'], ['rank', 'Ranking'], ['hall', 'Campeãs']].map(([k, l]) => `<button role="tab" class="${U.tab === k ? 'on' : ''}" data-act="wcTab" data-v="${k}">${l}</button>`).join('')}</div>
+    <div class="tabs" role="tablist">${[['path', 'Caminho para a Copa'], ['stages', 'Etapas'], ['rank', 'Ranking'], ['hall', 'Campeãs'], ['apps', 'Participações']].map(([k, l]) => `<button role="tab" class="${U.tab === k ? 'on' : ''}" data-act="wcTab" data-v="${k}">${l}</button>`).join('')}</div>
     ${body}
   </div></section>`;
 }

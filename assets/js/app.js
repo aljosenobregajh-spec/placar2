@@ -774,16 +774,34 @@ function compDates(c) {
   return out;
 }
 
-function tableHTML(c, ids, matches, zones = []) {
-  return rowsTableHTML(Engine.table(ids, matches), zones);
+function tableHTML(c, ids, matches, zones = [], mvKey = null) {
+  return rowsTableHTML(Engine.table(ids, matches), zones, true, mvKey ? moveMap(c, mvKey) : null);
 }
-function rowsTableHTML(rows, zones = [], legend = true) {
+// posição de cada time depois da rodada anterior à última jogada (para as setas de sobe/desce)
+function moveMap(c, key) {
+  const src = evoSources(c).find(x => x.key === key);
+  if (!src) return null;
+  const L = src.rounds.map(rd => rd.some(m => m.played)).lastIndexOf(true);
+  if (L < 1) return null;
+  const out = {};
+  src.rankAt(L - 1).forEach((id, k) => { out[id] = k; });
+  return out;
+}
+const MV_UP = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 7L5 3l3.5 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const MV_DOWN = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 3L5 7l3.5-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function mvHTML(d) {
+  if (d == null) return '';
+  if (d > 0) return `<span class="mv up" title="Subiu ${d} ${d > 1 ? 'posições' : 'posição'} em relação à rodada anterior">${MV_UP}<b>${d}</b></span>`;
+  if (d < 0) return `<span class="mv down" title="Caiu ${-d} ${d < -1 ? 'posições' : 'posição'} em relação à rodada anterior">${MV_DOWN}<b>${-d}</b></span>`;
+  return '<span class="mv eq" title="Mesma posição da rodada anterior"><i></i></span>';
+}
+function rowsTableHTML(rows, zones = [], legend = true, prev = null) {
   const zoneOf = pos => zones.find(z => pos >= z.from && pos <= z.to);
   return `<div class="table-wrap"><table class="tbl">
     <thead><tr><th>#</th><th class="l">${rows.length && rows.every(r => (Teams.get(r.id) || {}).nat) ? 'Seleção' : 'Clube'}</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th><th>Últimos</th></tr></thead>
     <tbody>${rows.map((r, i) => {
       const z = zoneOf(i + 1);
-      return `<tr><td class="pos" style="${z ? `--zc:${z.color}` : ''}">${i + 1}</td>
+      return `<tr><td class="pos ${prev ? 'has-mv' : ''}" style="${z ? `--zc:${z.color}` : ''}">${prev ? `<span class="pw">${prev[r.id] != null ? mvHTML(prev[r.id] - i) : '<span class="mv"></span>'}<span class="pn">${i + 1}</span></span>` : i + 1}</td>
         <td class="l"><span class="team">${crest(r.id, 24)}${esc(nameOf(r.id))}</span></td>
         <td class="pts">${r.p}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp}</td><td>${r.gc}</td><td>${r.sg > 0 ? '+' : ''}${r.sg}</td>
         <td><span class="form">${r.form.map(f => `<i class="${f}">${f}</i>`).join('')}</span></td></tr>`;
@@ -820,24 +838,20 @@ function gameRow(item, c) {
 }
 
 // tab: quando informado, mostra só as rodadas daquela aba (fase) e em formato compacto, ao lado da tabela
-function gamesHTML(c, tab) {
+// rodada escolhida numa aba + barra de navegação
+function roundPick(c, tab) {
   const dates = compDates(c);
   const st = UI.comp[c.id];
   const idx = dates.map((d, i) => i).filter(i => !tab || dates[i].tab === tab);
-  if (!idx.length) return '';
+  if (!idx.length) return null;
   if (st.date == null || !idx.includes(st.date)) {
     const i = idx.find(k => dates[k].items.some(x => !x.m.played));
     st.date = i == null ? idx[idx.length - 1] : i;
   }
   const d = dates[st.date];
   const pos = idx.indexOf(st.date);
-  let body = '';
-  const groupsInDate = [...new Set(d.items.map(x => x.note).filter(Boolean))];
-  if (groupsInDate.length) {
-    body = groupsInDate.map(g => `<p class="game-label">${esc(g)}</p><div class="games">${d.items.filter(x => x.note === g).map(x => gameRow(x, c)).join('')}</div>`).join('');
-  } else body = `<div class="games">${d.items.map(x => gameRow(x, c)).join('')}</div>`;
   const short = l => (tab && c.reg ? l.replace(c.spec[+tab.slice(1)].name + ' · ', '').replace(/^./, ch => ch.toUpperCase()) : l);
-  return `<div class="round-nav">
+  const nav = `<div class="round-nav">
       <span class="title">${esc(short(d.label))}</span>
       <span class="navb">
         ${d.items.some(x => !x.m.played) ? `<button class="btn btn-dark btn-sm" data-act="simDate">${I.dice} ${tab ? 'Simular a rodada' : 'Simular os jogos que faltam'}</button>` : ''}
@@ -845,8 +859,36 @@ function gamesHTML(c, tab) {
         <select data-inp="dateSel" aria-label="Escolher rodada">${idx.map(i => `<option value="${i}" ${i === st.date ? 'selected' : ''}>${esc(short(dates[i].label))}</option>`).join('')}</select>
         <button class="close" data-act="dateNav" data-v="${pos < idx.length - 1 ? idx[pos + 1] : st.date}" ${pos === idx.length - 1 ? 'disabled' : ''} aria-label="Próxima rodada">${I.right}</button>
       </span>
-    </div>${body}
+    </div>`;
+  return { d, nav };
+}
+// tab: quando informado, mostra só as rodadas daquela aba (fase) e em formato compacto, ao lado da tabela
+function gamesHTML(c, tab) {
+  const R = roundPick(c, tab);
+  if (!R) return '';
+  const { d, nav } = R;
+  let body = '';
+  const groupsInDate = [...new Set(d.items.map(x => x.note).filter(Boolean))];
+  if (groupsInDate.length) {
+    body = groupsInDate.map(g => `<p class="game-label">${esc(g)}</p><div class="games">${d.items.filter(x => x.note === g).map(x => gameRow(x, c)).join('')}</div>`).join('');
+  } else body = `<div class="games">${d.items.map(x => gameRow(x, c)).join('')}</div>`;
+  return `${nav}${body}
     ${Engine.finished(c) ? '' : `<p class="hint" style="margin-top:14px">${tab ? 'Digite o placar ou use o dado para simular o jogo. Para desfazer, apague os dois números.' : 'Digite o placar para lançar um resultado (Tab ou Enter passa para o próximo campo), ou use o dado para simular só aquele jogo. Para desfazer, apague os dois números.'}</p>`}`;
+}
+// fases com vários grupos: cada grupo com a tabela e, logo abaixo, os jogos dele na rodada escolhida
+// groups: [{ name, teams, table }]
+function groupsLiveHTML(c, tab, groups, after = '') {
+  const R = roundPick(c, tab);
+  const many = groups.length > 4 ? 'many' : '';
+  if (!R) return `<div class="groups-grid ${many}">${groups.map(g => `<div><h4>${esc(g.name)}</h4>${g.table}</div>`).join('')}</div>${after}`;
+  const gOf = {};
+  groups.forEach(g => g.teams.forEach(id => { gOf[id] = g.name; }));
+  return `${R.nav}
+    <div class="groups-grid live-groups ${many}">${groups.map(g => {
+      const items = R.d.items.filter(x => (gOf[x.m.h] || gOf[x.m.a]) === g.name);
+      return `<div class="grp-card"><h4>${esc(g.name)}</h4>${g.table}${items.length ? `<div class="games cmp">${items.map(x => gameRow(x, c)).join('')}</div>` : ''}</div>`;
+    }).join('')}</div>${after}
+    ${Engine.finished(c) ? '' : '<p class="hint" style="margin-top:14px">Digite o placar ou use o dado embaixo de cada grupo: a tabela muda na hora. Para desfazer, apague os dois números.</p>'}`;
 }
 // tabela (ou chave) + jogos da rodada na mesma aba
 function withGames(c, tab, main, below) {
@@ -901,7 +943,22 @@ function bracketStageHTML(c, ko, i) {
   ${ko.directSeeds ? `<p class="hint">Classificados direto às oitavas: ${ko.directSeeds.map(id => esc(shortOf(id))).join(', ')}.</p>` : ''}`;
 }
 
-function phaseHTML(c, i) {
+// fase de grupos em que os melhores 3ºs avançam: faixa compacta com a ordem dos 3ºs
+function thirdsStripHTML(c, i) {
+  const ko = c.spec.find(sp => (sp.pairing === 'thirds48' || sp.pairing === 'thirds24') && sp.teams && sp.teams.phase === i);
+  const st = c.stages[i];
+  if (!ko || !st || st.type !== 'rr' || !st.rounds.flat().some(m => m.played)) return '';
+  const n = ko.pairing === 'thirds48' ? 8 : 4;
+  const rows = st.groups.map((g, gi) => ({ ...Reg.rank(c, i, gi)[2], g: g.name.replace(/^Grupo /, '') }))
+    .sort((x, y) => y.p - x.p || y.sg - x.sg || y.gp - x.gp || y.v - x.v);
+  const done = Reg.stageDone(c, i);
+  return `<div class="thirds">
+    <div class="thirds-h"><b>Melhores 3ºs colocados</b><span>${n} de ${rows.length} avançam${done ? '' : ' · parcial'} · pontos, saldo, gols</span></div>
+    <div class="thirds-list">${rows.map((r, k) => `<span class="th3 ${k < n ? 'in' : ''} ${k === n ? 'cut' : ''}" title="${esc(nameOf(r.id))} · Grupo ${esc(r.g)} · ${r.p} pts, saldo ${r.sg}, ${r.gp} gols">
+      <i>${k + 1}</i>${crest(r.id, 20)}<span class="nm">${esc(shortOf(r.id))}</span><small>${esc(r.g)}</small><b>${r.p}</b><em>${r.sg > 0 ? '+' : ''}${r.sg}</em></span>`).join('')}</div>
+  </div>`;
+}
+function phaseHTML(c, i, live = false) {
   const spec = c.spec[i], st = c.stages[i];
   if (!st && spec.confirm) return confirmHTML(c, i);
   if (!st) {
@@ -912,11 +969,15 @@ function phaseHTML(c, i) {
   const groups = st.type === 'agg' ? [{ name: st.name }] : st.groups;
   const zonesFor = g => (spec.groupZones ? spec.groupZones[g] : spec.zonesEach) || (groups.length === 1 ? spec.zones : null) || [];
   const carry = st.carry ? `<p class="hint" style="margin-bottom:12px">Os pontos da fase anterior foram mantidos${st.carry.factors && st.carry.factors.some(f => f !== 1) ? ' (no grupo marcado, pela metade)' : ''}.</p>` : '';
-  if (groups.length === 1) return carry + rowsTableHTML(Reg.rank(c, i, 0), zonesFor(0));
+  const mv = gi => (st.type === 'rr' ? moveMap(c, `${i}:${gi}`) : null);
+  if (groups.length === 1) return carry + rowsTableHTML(Reg.rank(c, i, 0), zonesFor(0), true, mv(0));
   const legendZones = [];
   groups.forEach((g, gi) => zonesFor(gi).forEach(z => { if (!legendZones.some(x => x.label === z.label)) legendZones.push(z); }));
-  return carry + `<div class="groups-grid ${groups.length > 4 ? 'many' : ''}">${groups.map((g, gi) => `<div><h4>${esc(g.name)}</h4>${rowsTableHTML(Reg.rank(c, i, gi), zonesFor(gi), false)}</div>`).join('')}</div>
-    ${legendZones.length ? `<div class="legend">${legendZones.map(z => `<span><i style="background:${z.color}"></i>${esc(z.label)}</span>`).join('')}</div>` : ''}`;
+  const legend = legendZones.length ? `<div class="legend">${legendZones.map(z => `<span><i style="background:${z.color}"></i>${esc(z.label)}</span>`).join('')}</div>` : '';
+  const blocks = groups.map((g, gi) => ({ name: g.name, teams: g.teams, table: rowsTableHTML(Reg.rank(c, i, gi), zonesFor(gi), false, mv(gi)) }));
+  if (live) return carry + groupsLiveHTML(c, 'p' + i, blocks, legend + thirdsStripHTML(c, i));
+  return carry + `<div class="groups-grid ${groups.length > 4 ? 'many' : ''}">${blocks.map(g => `<div><h4>${esc(g.name)}</h4>${g.table}</div>`).join('')}</div>
+    ${legend}`;
 }
 /* ---------- Fase que espera confirmação de clubes (ex.: 3ºs da Libertadores na Sul-Americana) ---------- */
 function confirmHTML(c, i) {
@@ -1177,17 +1238,16 @@ Pages.comp = id => {
   let body = '';
   if (S.tab === 'prob') body = probHTML(c);
   else if (S.tab === 'evo') body = evoHTML(c);
-  else if (c.reg && S.tab[0] === 'p' && S.tab !== 'prob') { const pi = +S.tab.slice(1), pst = c.stages[pi]; body = pst && !pst.auto ? withGames(c, S.tab, phaseHTML(c, pi), pst.type === 'knockout') : phaseHTML(c, pi); }
+  else if (c.reg && S.tab[0] === 'p' && S.tab !== 'prob') { const pi = +S.tab.slice(1), pst = c.stages[pi]; body = !pst || pst.auto ? phaseHTML(c, pi) : pst.type === 'rr' && pst.groups.length > 1 ? phaseHTML(c, pi, true) : withGames(c, S.tab, phaseHTML(c, pi), pst.type === 'knockout'); }
   else if (S.tab === 'rules') body = rulesHTML(c);
   else if (S.tab === 'table') {
     const stage = c.stages[0];
-    body = withGames(c, 'table', tableHTML(c, stage.teams, stage.rounds.flat(), c.zones));
+    body = withGames(c, 'table', tableHTML(c, stage.teams, stage.rounds.flat(), c.zones, '0:0'));
   } else if (S.tab === 'groups') {
     const stage = c.stages[0];
     const q = c.cfg.qualify;
-    body = `<div class="groups-grid">${stage.groups.map(g => `<div><h4>${esc(g.name)}</h4>${tableHTML(c, g.teams, g.rounds.flat(), [{ from: 1, to: q, color: ZONE_COLORS.lib, label: '' }]).replace(/<div class="legend">[\s\S]*?<\/div>$/, '')}</div>`).join('')}</div>
-      <div class="legend"><span><i style="background:${ZONE_COLORS.lib}"></i>Classificados ao mata-mata</span></div>`;
-    body = withGames(c, 'groups', body);
+    const blocks = stage.groups.map((g, gi) => ({ name: g.name, teams: g.teams, table: rowsTableHTML(Engine.table(g.teams, g.rounds.flat()), [{ from: 1, to: q, color: ZONE_COLORS.lib, label: '' }], false, moveMap(c, '0:' + gi)) }));
+    body = groupsLiveHTML(c, 'groups', blocks, `<div class="legend"><span><i style="background:${ZONE_COLORS.lib}"></i>Classificados ao mata-mata</span></div>`);
   } else if (S.tab === 'games') body = gamesHTML(c);
   else if (S.tab === 'bracket') body = withGames(c, 'bracket', bracketHTML(c), true);
 
@@ -1780,6 +1840,10 @@ function render() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
   const page = parts[0] || '';
   const app = $('#app');
+  // modo Copa: a força das seleções acompanha o ranking do ciclo (só dentro do ciclo)
+  const cyId = page === 'c' ? (Store.d.comps.find(x => x.id === parts[1]) || {}).cycle : page === 'copa' ? parts[1] : null;
+  const cyB = cyId && (Store.d.cycles || []).find(x => x.id === cyId);
+  try { Engine.setBoost(cyB ? WC.boost(Store.d, cyB) : null); } catch (e) { Engine.setBoost(null); }
   if (page === '') app.innerHTML = Pages.home();
   else if (page === 'partida') app.innerHTML = Pages.partida();
   else if (page === 'competicoes') app.innerHTML = Pages.competicoes();

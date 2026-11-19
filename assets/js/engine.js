@@ -32,7 +32,13 @@ const Engine = (() => {
     return a;
   }
   const fallbackTeam = id => ({ id, name: 'Clube removido', short: '???', atk: 60, def: 60, colors: ['#999', '#fff'] });
-  const T = id => getTeam(id) || fallbackTeam(id);
+  // ajuste de força por competição (modo Copa: segue o ranking do ciclo); null = sem ajuste
+  let boost = null;
+  const T = id => {
+    const t = getTeam(id) || fallbackTeam(id);
+    const b = boost && boost[id];
+    return b ? { ...t, atk: t.atk + b, def: t.def + b } : t;
+  };
 
   /* ---------- Força e expectativa de gols ---------- */
   function baseLambdas(h, a, neutral) {
@@ -849,6 +855,7 @@ const Engine = (() => {
     finished: comp => comp.reg ? Reg.finished(comp) : !!comp.champion,
     T, roundRobin, matchdays, venuePenalty, swissGames, assignRounds, bracketOrder, roundName, shootout, updateTie, restoreBo3, nextPow2,
     setFast(v) { fast = !!v; },
+    setBoost(m) { boost = m && Object.keys(m).length ? m : null; },
     configure(o) { if (o.getTeam) getTeam = o.getTeam; if (o.settings) settings = o.settings; },
     ovr, uid, shuffle, probabilities, playMatch, newMatch, newTie, playTieLeg, tieAggregate, matchWinner,
     table, create, validate, step, simulateAll, playOne, clearResults, redraw, progress, monteCarlo,
