@@ -190,17 +190,21 @@ add({
 // empate no mata-mata vai direto aos pênaltis
 const estadual = c => {
   const n = c.teams.length, rel = c.rel || 0;
-  const zones = [zone(1, 4, Z.lib, 'Semifinal'), ...(rel ? [zone(n - rel + 1, n, Z.rel, 'Rebaixamento')] : [])];
+  const adv = c.adv || 4;
+  const zones = [zone(1, adv, Z.lib, adv === 8 ? 'Quartas de final' : 'Semifinal'), ...(rel ? [zone(n - rel + 1, n, Z.rel, 'Rebaixamento')] : [])];
   add({
     id: c.id, name: c.name, group: 'Estaduais', icon: 'knockout', short: c.short, crest: c.crest,
     entries: { teams: I(c.teams) }, roles: { teams: 'Clubes' }, champion: { phase: 1 },
     phases: [
       { type: 'rr', name: 'Primeira fase', teams: { entry: 'teams' }, legs: 1, tiebreak: ['pts', 'w', 'gd', 'gf'], zones },
-      { type: 'ko', name: 'Mata-mata', after: [0], teams: { phase: 0, pos: [1, 4] }, pairing: 'pairs', pairs: [[0, 3], [1, 2]],
-        seedBy: { campaign: [0] }, legs: c.semiLegs, et: false, pens: true, ...(c.finalLegs !== c.semiLegs ? { final: { legs: c.finalLegs } } : {}), roundNames: ['Semifinal', 'Final'] }
+      adv === 8
+        ? { type: 'ko', name: 'Mata-mata', after: [0], teams: { phase: 0, pos: [1, 8] }, pairing: 'pairs', pairs: [[0, 7], [3, 4], [1, 6], [2, 5]],
+            seedBy: { campaign: [0] }, reseedAt: 1, legs: c.semiLegs, et: false, pens: true, ...(c.finalLegs !== c.semiLegs ? { final: { legs: c.finalLegs } } : {}), roundNames: ['Quartas de final', 'Semifinal', 'Final'] }
+        : { type: 'ko', name: 'Mata-mata', after: [0], teams: { phase: 0, pos: [1, 4] }, pairing: 'pairs', pairs: [[0, 3], [1, 2]],
+            seedBy: { campaign: [0] }, legs: c.semiLegs, et: false, pens: true, ...(c.finalLegs !== c.semiLegs ? { final: { legs: c.finalLegs } } : {}), roundNames: ['Semifinal', 'Final'], ...(c.ko || {}) }
     ],
-    rules: [`${n} clubes em turno único (${n - 1} rodadas). Os 4 primeiros vão à semifinal${rel ? `; ${rel === 1 ? 'o último cai' : `os ${rel} últimos caem`} para a segunda divisão` : ''}.`,
-      `Semifinal (1º × 4º e 2º × 3º) ${c.semiLegs === 2 ? 'em ida e volta' : 'em jogo único'} e final ${c.finalLegs === 2 ? 'em ida e volta' : 'em jogo único'}. A melhor campanha decide em casa; empate vai direto aos pênaltis.`,
+    rules: [`${n} clubes em turno único (${n - 1} rodadas). Os ${adv} primeiros vão ${adv === 8 ? 'às quartas de final (1º × 8º, 2º × 7º, 3º × 6º, 4º × 5º, em ida e volta)' : 'à semifinal'}${rel ? `; ${rel === 1 ? 'o último cai' : `os ${rel} últimos caem`} para a segunda divisão` : ''}.`,
+      c.koRule || `Semifinal (${adv === 8 ? 'melhor × pior campanha entre os classificados' : '1º × 4º e 2º × 3º'}) ${c.semiLegs === 2 ? 'em ida e volta' : 'em jogo único'} e final ${c.finalLegs === 2 ? 'em ida e volta' : 'em jogo único'}. A melhor campanha decide em casa; empate vai direto aos pênaltis.`,
       'Desempate na primeira fase: pontos, vitórias, saldo de gols, gols marcados.', ...(c.rules || [])],
     notes: c.notes || [], sources: c.sources
   });
@@ -330,6 +334,228 @@ add({
     'Desempate: pontos, vitórias, saldo de gols, gols marcados.'],
   sources: [{ t: 'Rádio Sideral — FGF define grupos e regulamento do Gauchão 2027', u: 'https://www.radiosideral.com.br/post/fgf-define-grupos-e-regulamento-do-gauch%C3%A3o-2027-gr%C3%AAmio-e-inter-se-enfrentar%C3%A3o-na-primeira-fase' }]
 });
+
+/* ---------- Estaduais do Sudeste e Centro-Oeste 2027 ---------- */
+const crossGroups = (gA, gB) => ({ groups: { method: 'roles', roles: [gA, gB], names: ['Grupo A', 'Grupo B'] }, cross: true, legs: 1, tiebreak: ['pts', 'w', 'gd', 'gf'] });
+
+add({
+  id: 'paulista-2027', name: 'Campeonato Paulista 2027 (Paulistão)', group: 'Estaduais', icon: 'knockout', crest: 'assets/logos/lg-fpf-sp.png',
+  short: '16 clubes · 8 jogos (pote + outros potes) + mata-mata',
+  entries: { teams: I('corinthians', 'palmeiras', 'santos', 'sao-paulo', 'novorizontino', 'portuguesa-sp', 'bragantino', 'capivariano', 'guarani', 'botafogo-sp', 'mirassol', 'primavera', 'sao-bernardo', 'noroeste', 'juventus-sp', 'ferroviaria') },
+  roles: { teams: 'Clubes, na ordem dos potes (A: 1–4, B: 5–8, C: 9–12, D: 13–16)' }, champion: { phase: 1 },
+  phases: [
+    { type: 'rr', name: 'Primeira fase', teams: { entry: 'teams' }, legs: 1, sched: 'pots4x4', tiebreak: ['pts', 'w', 'gd', 'gf'],
+      zones: [zone(1, 8, Z.lib, 'Quartas de final'), zone(15, 16, Z.rel, 'Rebaixamento')] },
+    { type: 'ko', name: 'Mata-mata', after: [0], teams: { phase: 0, pos: [1, 8] }, pairing: 'pairs', pairs: [[0, 7], [3, 4], [1, 6], [2, 5]],
+      seedBy: { campaign: [0] }, reseedAt: 1, legs: 1, et: false, pens: true, final: { legs: 2 }, roundNames: ['Quartas de final', 'Semifinal', 'Final'] }
+  ],
+  rules: ['16 clubes em 4 potes de 4, numa classificação única. Cada clube joga 8 vezes: contra os 3 do próprio pote e contra 5 de outros potes.',
+    'Os 8 primeiros vão às quartas (1º × 8º, 2º × 7º, 3º × 6º, 4º × 5º); os 2 últimos caem para a Série A2.',
+    'Quartas e semifinal (melhor × pior campanha) em jogo único na casa da melhor campanha; empate vai aos pênaltis.',
+    'Desempate: pontos, vitórias, saldo de gols, gols marcados.'],
+  notes: ['A FPF ainda decide se a final será em 1 ou 2 jogos (depende do calendário da Libertadores); o modelo usa 2 jogos, como em 2026. Os adversários de fora do pote são definidos por sorteio na realidade; aqui o site distribui os 5 jogos entre os outros potes.'],
+  sources: [{ t: 'DCI — Guia do Paulistão 2027', u: 'https://www.dci.com.br/esporte/futebol/guia-do-paulistao-2027-veja-grupos-e-datas-dos-jogos/' }]
+});
+
+estadual({ id: 'paulista-a2-2027', crest: 'assets/logos/lg-fpf-sp.png', name: 'Campeonato Paulista Série A2 2027', short: '16 clubes · turno único + quartas, semifinal e final',
+  teams: ['agua-santa', 'inter-de-limeira', 'ituano', 'linense', 'monte-azul', 'oeste', 'santo-andre', 'sao-jose-sp', 'sertaozinho', 'taubate', 'votuporanguense', 'xv-de-piracicaba', 'velo-clube', 'ponte-preta', 'marilia', 'portuguesa-santista'],
+  rel: 2, semiLegs: 2, finalLegs: 2, adv: 8,
+  rules: ['Os dois finalistas sobem para a Série A1 de 2028.'],
+  notes: ['Quartas em ida e volta confirmadas; o formato de semifinal e final ainda não foi divulgado (o modelo usa ida e volta). O Oeste hoje se chama Osasco Sporting.'],
+  sources: [{ t: 'Futebol Interior — formato do Paulistão A2 2027', u: 'https://www.futebolinterior.com.br/paulistao-a2-tem-formato-definido/' },
+    { t: 'ACidadeON — times de todas as divisões do Paulistão 2027', u: 'https://www.acidadeon.com/campinas/esportes/paulistao-2027-veja-os-times-de-todas-as-divisoes-do-campeonato/' }] });
+
+add({
+  id: 'carioca-2027', name: 'Campeonato Carioca 2027', group: 'Estaduais', icon: 'groups', crest: 'assets/logos/lg-ferj.png', short: '12 clubes · 2 grupos (um enfrenta o outro) + mata-mata e Taça Rio',
+  entries: { gA: I('flamengo', 'vasco', 'madureira', 'nova-iguacu', 'americano', 'portuguesa-rj'), gB: I('fluminense', 'botafogo', 'volta-redonda', 'bangu', 'boavista-rj', 'sampaio-correa-rj') },
+  roles: { gA: 'Grupo A (sorteio a definir)', gB: 'Grupo B (sorteio a definir)' }, champion: { phase: 1 },
+  phases: [
+    { type: 'rr', name: 'Taça Guanabara', ...crossGroups('gA', 'gB'), zonesEach: [zone(1, 4, Z.lib, 'Quartas de final')] },
+    { type: 'ko', name: 'Mata-mata', after: [0], teams: { list: [{ phase: 0, group: 0, pos: [1, 4] }, { phase: 0, group: 1, pos: [1, 4] }] },
+      pairing: 'pairs', pairs: [[0, 3], [5, 6], [1, 2], [4, 7]], seedBy: { campaign: [0] }, legs: 2, et: false, pens: true,
+      roundsCfg: [{ legs: 1 }], final: { legs: 1 }, roundNames: ['Quartas de final', 'Semifinal', 'Final'] },
+    { type: 'ko', name: 'Taça Rio', after: [{ phase: 1, round: 0 }], teams: { phase: 1, roundLosers: 0, sortBy: { campaign: [0] } },
+      pairing: 'pairs', pairs: [[0, 3], [1, 2]], seedBy: { campaign: [0] }, legs: 2, et: false, pens: true, final: { legs: 1 }, roundNames: ['Semifinal', 'Final'] }
+  ],
+  rules: ['12 clubes em 2 grupos de 6; cada clube enfrenta os 6 do outro grupo, uma vez (Taça Guanabara).',
+    'Quartas dentro do grupo (1º × 4º, 2º × 3º) em jogo único na casa da melhor campanha; semifinal em ida e volta; final em jogo único. Empate vai aos pênaltis.',
+    'Taça Rio: os 4 eliminados nas quartas jogam semifinal em ida e volta e final em jogo único.',
+    'Rebaixamento: o pior da classificação geral cai; o penúltimo enfrenta o vice da Série A2 (não simulado aqui).'],
+  notes: ['Formato de 2026, que a FERJ deve manter (o Conselho Arbitral de 2027 ainda não aconteceu). Os grupos reais saem por sorteio; os do modelo são um exemplo. Na realidade as semifinais também são sorteadas; aqui o cruzamento é fixo (vencedores do Grupo A × do Grupo B).'],
+  sources: [{ t: 'GF Esporte — Carioca 2027: arbitral deve definir regulamento', u: 'https://www.gfesporte.com.br/noticias/futebol/carioca-2027-arbitral-deve-definir-regulamento-e-formato-da-competi-o/29925/' },
+    { t: 'Wikipedia — 2026 Campeonato Carioca (formato)', u: 'https://en.wikipedia.org/wiki/2026_Campeonato_Carioca' }]
+});
+
+estadual({ id: 'carioca-a2-2027', crest: 'assets/logos/lg-ferj.png', name: 'Campeonato Carioca Série A2 2027', short: '12 clubes · turno único + semifinal e final',
+  teams: ['marica', 'resende', 'america-rj', 'perolas-negras', 'sao-goncalo', 'bonsucesso', 'olaria', 'cabofriense', 'araruama', 'serrano-rj', 'niteroiense', 'goytacaz'],
+  rel: 2, semiLegs: 2, finalLegs: 2,
+  rules: ['O campeão sobe para a Série A de 2028; o vice disputa um play-off com o penúltimo da Série A (não simulado aqui).'],
+  notes: ['Vagas ainda indefinidas: os 2 que sobem da Série B1 de 2026 (Serrano, Niteroiense, Goytacaz e Duque de Caxias estão nas semifinais) e o clube que cair da Série A de 2027. O modelo usa Serrano, Niteroiense e Goytacaz; troque ao criar. Formato da semifinal e da final não divulgado (o modelo usa ida e volta).'],
+  sources: [{ t: 'Wikipédia — Campeonato Carioca de 2026, Série A2 e Série B1', u: 'https://pt.wikipedia.org/wiki/Campeonato_Carioca_de_Futebol_de_2026_-_S%C3%A9rie_A2' }] });
+
+add({
+  id: 'mineiro-2027', name: 'Campeonato Mineiro 2027', group: 'Estaduais', icon: 'groups', crest: 'assets/logos/lg-fmf-mg.png', short: '12 clubes · 2 grupos (um enfrenta o outro) + mata-mata e Troféu Inconfidência',
+  entries: { gA: I('atletico-mineiro', 'pouso-alegre', 'north', 'tombense', 'betim', 'villa-nova'), gB: I('cruzeiro', 'america-mg', 'urt', 'uberlandia', 'itabirito', 'democrata-sl') },
+  roles: { gA: 'Grupo A', gB: 'Grupo B' }, champion: { phase: 1 },
+  phases: [
+    { type: 'rr', name: 'Primeira fase', ...crossGroups('gA', 'gB'), zonesEach: [zone(1, 4, Z.lib, 'Quartas de final'), zone(6, 6, Z.rel, 'Rebaixamento')] },
+    { type: 'ko', name: 'Mata-mata', after: [0], teams: { list: [{ phase: 0, group: 0, pos: [1, 4] }, { phase: 0, group: 1, pos: [1, 4] }] },
+      pairing: 'pairs', pairs: [[0, 3], [1, 2], [4, 7], [5, 6]], seedBy: { campaign: [0] }, reseedAt: 1, legs: 2, et: false, pens: true,
+      roundNames: ['Quartas de final', 'Semifinal', 'Final'] },
+    { type: 'ko', name: 'Troféu Inconfidência', after: [{ phase: 1, round: 0 }], teams: { phase: 1, roundLosers: 0, sortBy: { campaign: [0] } },
+      pairing: 'pairs', pairs: [[0, 3], [1, 2]], seedBy: { campaign: [0] }, legs: 1, et: false, pens: true, roundNames: ['Semifinal', 'Final'] }
+  ],
+  rules: ['12 clubes em 2 grupos de 6; cada clube enfrenta os 6 do outro grupo, uma vez.',
+    'Os 4 primeiros de cada grupo vão às quartas. Quartas, semifinal e final em ida e volta, com a melhor campanha decidindo em casa; empate vai aos pênaltis.',
+    'Troféu Inconfidência: os 4 eliminados nas quartas.', 'O último de cada grupo cai para o Módulo II de 2028.'],
+  notes: ['O Minas do Sul é o antigo Itabirito, que mudou de nome e de cidade (Varginha). Não foi divulgado como se cruzam as quartas; o modelo usa 1º × 4º e 2º × 3º dentro do grupo (como no Paranaense e no Gauchão). As fontes divergem no rebaixamento: último de cada grupo ou os 2 piores da classificação geral. O formato do Troféu Inconfidência não foi detalhado (o modelo usa jogo único).'],
+  sources: [{ t: 'Gazeta Esportiva — FMF detalha o novo formato do Mineiro 2027', u: 'https://www.gazetaesportiva.com/campeonatos/mineiro/fmf-detalha-novo-formato-do-campeonato-mineiro-para-2027-confira/' },
+    { t: 'Itatiaia — FMF muda forma de disputa do Mineiro 2027', u: 'https://www.itatiaia.com.br/esportes/futebol/futebol-nacional/campeonato-mineiro/fmf-muda-forma-de-disputa-do-campeonato-mineiro-2027-saiba-detalhes' }]
+});
+
+add({
+  id: 'capixaba-2027', name: 'Campeonato Capixaba 2027', group: 'Estaduais', icon: 'knockout', crest: 'assets/logos/lg-fes.png', short: '10 clubes · turno único + quartas, semifinal e final',
+  entries: { teams: I('vitoria-es', 'rio-branco-es', 'desportiva', 'porto-vitoria', 'real-noroeste', 'vilavelhense', 'serra-es', 'forte-es', 'linhares', 'estrela-do-norte') },
+  roles: { teams: 'Clubes' }, champion: { phase: 1 },
+  phases: [
+    { type: 'rr', name: 'Primeira fase', teams: { entry: 'teams' }, legs: 1, tiebreak: ['pts', 'w', 'gd', 'gf'], zones: [zone(1, 8, Z.lib, 'Quartas de final'), zone(9, 10, Z.rel, 'Rebaixamento')] },
+    { type: 'ko', name: 'Mata-mata', after: [0], teams: { phase: 0, pos: [1, 8] }, pairing: 'pairs', pairs: [[0, 7], [3, 4], [1, 6], [2, 5]],
+      seedBy: { campaign: [0] }, reseedAt: 1, legs: 2, et: false, pens: true, roundsCfg: [{ legs: 2, pens: false, better: true }], roundNames: ['Quartas de final', 'Semifinal', 'Final'] }
+  ],
+  rules: ['10 clubes em turno único (9 rodadas). Os 8 primeiros vão às quartas (1º × 8º, 2º × 7º, 3º × 6º, 4º × 5º); os 2 últimos caem para a Série B.',
+    'Quartas em ida e volta: os 4 primeiros fazem a volta em casa e passam com empate no agregado.',
+    'Semifinal e final em ida e volta, com a melhor campanha decidindo em casa; empate vai aos pênaltis.'],
+  notes: ['O formato da semifinal e da final não foi detalhado; o modelo usa ida e volta.'],
+  sources: [{ t: 'Futebol News — calendário do futebol capixaba 2027', u: 'https://futebolnews.com.br/calendario-futebol-capixaba-2027-capixabao/' }]
+});
+
+add({
+  id: 'goiano-2027', name: 'Campeonato Goiano 2027', group: 'Estaduais', icon: 'knockout', crest: 'assets/logos/lg-fgf-go.png', short: '12 clubes · 3 grupos que não se enfrentam + classificação geral e mata-mata',
+  entries: { teams: I('vila-nova', 'abecat-ouvidorense', 'anapolis', 'rio-verde', 'atletico-go', 'aparecidense', 'anapolina', 'goiatuba', 'goias', 'crac', 'goianesia', 'jataiense') },
+  roles: { teams: 'Clubes, na ordem dos grupos (A: 1–4, B: 5–8, C: 9–12)' }, champion: { phase: 1 },
+  phases: [
+    { type: 'rr', name: 'Primeira fase', teams: { entry: 'teams' }, legs: 1, sched: 'blocks4', tiebreak: ['pts', 'w', 'gd', 'gf'], zones: [zone(1, 8, Z.lib, 'Quartas de final')] },
+    { type: 'ko', name: 'Mata-mata', after: [0], teams: { phase: 0, pos: [1, 8] }, pairing: 'pairs', pairs: [[0, 7], [3, 4], [1, 6], [2, 5]],
+      seedBy: { campaign: [0] }, reseedAt: 1, legs: 2, et: false, pens: true, roundsCfg: [{ legs: 1 }], roundNames: ['Quartas de final', 'Semifinal', 'Final'] }
+  ],
+  rules: ['12 clubes em 3 grupos de 4. Cada clube enfrenta os 8 dos outros dois grupos, uma vez, numa classificação geral única.',
+    'Os 8 primeiros vão às quartas (1º × 8º, 2º × 7º, 3º × 6º, 4º × 5º), em jogo único na casa da melhor campanha; empate vai aos pênaltis.',
+    'Semifinal e final em ida e volta, com a melhor campanha decidindo em casa.'],
+  notes: ['Se nenhum dos 3 grandes subir à Série A, as quartas podem virar ida e volta. Rebaixamento não divulgado.'],
+  sources: [{ t: 'Diário de Goiás — fórmula do Goianão 2027', u: 'https://diariodegoias.com.br/goianao-2027-tem-formula-de-disputa-definida-com-classicos-garantidos-e-quartas-em-jogo-unico/554241/' }]
+});
+
+estadual({ id: 'brasiliense-2027', crest: 'assets/logos/lg-ffdf.png', name: 'Campeonato Brasiliense 2027 (Candangão)', short: '10 clubes · turno único + semifinal e final',
+  teams: ['brasiliense', 'samambaia', 'sobradinho', 'capital-cf', 'ceilandia', 'gama', 'paranoa', 'real-brasilia', 'canaa-df', 'taguatinga'], rel: 2, semiLegs: 2, finalLegs: 1,
+  notes: ['A final é no Mané Garrincha; aqui o mando é da melhor campanha.'],
+  sources: [{ t: 'Metrópoles — FFDF define formato do Candangão 2027', u: 'https://www.metropoles.com/esportes/candangao-2027-ffdf-realiza-arbitral-e-define-formato-da-competicao' }] });
+
+const playoffs6 = c => add({
+  id: c.id, name: c.name, group: 'Estaduais', icon: 'knockout', crest: c.crest, short: c.short,
+  entries: { teams: I(c.teams) }, roles: { teams: 'Clubes' }, champion: { phase: 1 },
+  phases: [
+    { type: 'rr', name: 'Primeira fase', teams: { entry: 'teams' }, legs: 1, tiebreak: ['pts', 'w', 'gd', 'gf'],
+      zones: [zone(1, 2, Z.champion, 'Direto na semifinal'), zone(3, 6, Z.lib, 'Fase eliminatória'), zone(9, 10, Z.rel, 'Rebaixamento')] },
+    { type: 'ko', name: 'Mata-mata', after: [0], teams: { phase: 0, pos: [1, 6] }, pairing: 'pairs', pairs: [[0, null], [1, null], [2, 5], [3, 4]],
+      seedBy: { campaign: [0] }, reseedAt: 1, legs: 2, et: false, pens: true, roundsCfg: [{ legs: c.elimLegs }], roundNames: ['Fase eliminatória', 'Semifinal', 'Final'] }
+  ],
+  rules: ['10 clubes em turno único (9 rodadas). Os 2 primeiros vão direto à semifinal; do 3º ao 6º jogam a fase eliminatória (3º × 6º e 4º × 5º); os 2 últimos caem.',
+    `Fase eliminatória ${c.elimLegs === 2 ? 'em ida e volta' : 'em jogo único na casa da melhor campanha'}. Semifinal (o 1º enfrenta o classificado de pior campanha) e final em ida e volta. Empate vai aos pênaltis.`],
+  notes: c.notes, sources: c.sources
+});
+
+playoffs6({ id: 'matogrossense-2027', name: 'Campeonato Mato-Grossense 2027', crest: 'assets/logos/lg-fmf-mt.png', short: '10 clubes · turno único + eliminatória, semifinal e final', elimLegs: 1,
+  teams: ['mixto', 'luverdense', 'sport-sinop', 'operario-vg', 'cuiaba', 'nova-mutum', 'chapada', 'uniao-rondonopolis', 'sinop', 'cacerense'],
+  notes: ['O formato de semifinal e final não foi detalhado (o modelo usa ida e volta). O União ainda não confirmou presença.'],
+  sources: [{ t: 'Só Notícias — FMF define formato do Mato-grossense 2027', u: 'https://www.sonoticias.com.br/esportes/fmf-define-formato-e-datas-do-campeonato-mato-grossense-de-2027/' }] });
+
+playoffs6({ id: 'sulmatogrossense-2027', name: 'Campeonato Sul-Mato-Grossense 2027', crest: 'assets/logos/lg-ffms.png', short: '10 clubes · turno único + eliminatória, semifinal e final', elimLegs: 2,
+  teams: ['operario-ms', 'comercial-ms', 'pantanal', 'bataguassu', 'corumbaense', 'cra-aquidauana', 'dourados', 'ivinhema', 'misto', 'naviraiense'],
+  notes: [],
+  sources: [{ t: 'Enfoque MS — Sul-Mato-Grossense 2027 com dez clubes', u: 'https://www.enfoquems.com.br/campeonato-sul-mato-grossense-de-2027-comeca-em-16-de-janeiro-com-dez-clubes/' }] });
+
+/* ---------- Estaduais do Norte 2027 ---------- */
+const adv2 = { roundsCfg: [{ legs: 2, pens: false, better: true }] };
+
+estadual({ id: 'acreano-2027', crest: 'assets/logos/lg-ffac.png', name: 'Campeonato Acreano 2027', short: '8 clubes · turno único + semifinal e final',
+  teams: ['santa-cruz-ac', 'rio-branco-ac', 'galvez', 'humaita-ac', 'independencia-ac', 'adesg', 'atletico-acreano', 'placido-de-castro'], rel: 2, semiLegs: 2, finalLegs: 1, ko: adv2,
+  koRule: 'Semifinal (1º × 4º e 2º × 3º) em ida e volta: os 2 primeiros decidem em casa e passam com empate no agregado. Final em jogo único na casa da melhor campanha; empate vai aos pênaltis.',
+  notes: ['A FFAC repete o regulamento de 2026; o número de turnos da primeira fase não foi detalhado (o modelo usa turno único).'],
+  sources: [{ t: 'O Alto Acre — Santa Cruz e Atlético abrem o Acreanão 2027', u: 'https://oaltoacre.com/santa-cruz-e-atletico-jogam-a-abertura-do-acreanao-2027-em-9-de-janeiro/' },
+    { t: 'O Alto Acre — dirigentes definem detalhes do Acreano 2027', u: 'https://oaltoacre.com/dirigentes-definem-detalhes-do-campeonato-acreano-de-2027/' }] });
+
+estadual({ id: 'amapaense-2027', crest: 'assets/logos/lg-faf-ap.png', name: 'Campeonato Amapaense 2027 (Amapazão)', short: '8 clubes · turno único + semifinal e final',
+  teams: ['trem', 'ypiranga-ap', 'oratorio', 'portuguesa-ap', 'independente-ap', 'rio-norte', 'santos-ap', 'sao-jose-ap'], semiLegs: 2, finalLegs: 1,
+  notes: ['Rebaixamento não divulgado.'],
+  sources: [{ t: 'Diário do Amapá — FAF divulga tabela do Amapazão 2027', u: 'https://www.diariodoamapa.com.br/cadernos/esportes/faf-divulga-tabela-do-amapazao-2027/' }] });
+
+add({
+  id: 'amazonense-2027', name: 'Campeonato Amazonense 2027 (Barezão)', group: 'Estaduais', icon: 'knockout', crest: 'assets/logos/lg-faf-am.png', short: '8 clubes · turno único + playoff, semifinal e final',
+  entries: { teams: I('nacional-am', 'amazonas', 'manaus', 'manauara', 'princesa-do-solimoes', 'itacoatiara', 'parintins', 'fast-clube') },
+  roles: { teams: 'Clubes' }, champion: { phase: 1 },
+  phases: [
+    { type: 'rr', name: 'Primeira fase', teams: { entry: 'teams' }, legs: 1, tiebreak: ['pts', 'w', 'gd', 'gf'],
+      zones: [zone(1, 2, Z.champion, 'Direto na semifinal'), zone(3, 6, Z.lib, 'Playoff'), zone(8, 8, Z.rel, 'Rebaixamento')] },
+    { type: 'ko', name: 'Mata-mata', after: [0], teams: { phase: 0, pos: [1, 6] }, pairing: 'pairs', pairs: [[0, null], [1, null], [2, 5], [3, 4]],
+      seedBy: { campaign: [0] }, reseedAt: 1, legs: 2, et: false, pens: true, roundsCfg: [{ legs: 2, pens: false, better: true }], final: { legs: 1 }, roundNames: ['Playoff', 'Semifinal', 'Final'] }
+  ],
+  rules: ['8 clubes em turno único (7 rodadas). Os 2 primeiros vão direto à semifinal; do 3º ao 6º jogam o playoff (3º × 6º e 4º × 5º); o último cai para a Série B.',
+    'Playoff em ida e volta: 3º e 4º decidem em casa e passam com empate no agregado.',
+    'Semifinal em ida e volta (o 1º enfrenta o classificado de pior campanha) e final em jogo único. Empate vai aos pênaltis.'],
+  notes: ['O Fast Clube volta à elite como campeão da Série B de 2026.'],
+  sources: [{ t: 'Portal do Caubi — FAF define fórmula do Barezão 2027', u: 'https://www.portaldocaubi.com.br/faf-define-formula-e-data-de-inicio-do-barezao-2027/' },
+    { t: 'Sports Manaus — Fast vence o RB do Norte e volta à elite', u: 'https://sportsmanaus.com.br/em-jogo-emocionante-fast-clube-bate-o-rb-do-norte-na-final-da-serie-b-e-retorna-a-elite-do-futebol-amazonense-em-2027/' }]
+});
+
+add({
+  id: 'paraense-2027', name: 'Campeonato Paraense 2027 (Parazão)', group: 'Estaduais', icon: 'groups', crest: 'assets/logos/lg-fpf-pa.png', short: '12 clubes · 2 grupos (um enfrenta o outro) + mata-mata',
+  entries: { gA: I('paysandu', 'tuna-luso', 'castanhal', 'aguia-de-maraba', 'urumajo', 'sao-raimundo-pa'), gB: I('remo', 'capitao-poco', 'izabelense', 'cameta', 'santa-rosa-pa', 'amazonia-independente') },
+  roles: { gA: 'Grupo A', gB: 'Grupo B' }, champion: { phase: 1 },
+  phases: [
+    { type: 'rr', name: 'Primeira fase', ...crossGroups('gA', 'gB'), zonesEach: [zone(1, 4, Z.lib, 'Quartas de final'), zone(6, 6, Z.rel, 'Rebaixamento')] },
+    { type: 'ko', name: 'Mata-mata', after: [0], teams: { list: [{ phase: 0, group: 0, pos: [1, 4] }, { phase: 0, group: 1, pos: [1, 4] }] },
+      pairing: 'pairs', pairs: [[0, 7], [1, 6], [2, 5], [3, 4]], seedBy: { campaign: [0] }, reseedAt: 1, legs: 1, et: false, pens: true,
+      final: { legs: 2 }, roundNames: ['Quartas de final', 'Semifinal', 'Final'] }
+  ],
+  rules: ['12 clubes em 2 grupos de 6; cada clube enfrenta os 6 do outro grupo, uma vez.',
+    'Os 4 primeiros de cada grupo vão às quartas (1º A × 4º B, 2º A × 3º B, e vice-versa). Quartas e semifinal em jogo único na casa da melhor campanha; final em ida e volta. Empate vai aos pênaltis.',
+    'Rebaixamento: 2 clubes caem para a Série A2 de 2028.'],
+  notes: ['O jogo de abertura, Paysandu × Capitão Poço, também vale a Supercopa Grão-Pará (não simulada à parte). O cruzamento das quartas e quem cai (o último de cada grupo ou os 2 piores na geral) não foram detalhados; o modelo usa o cruzamento entre grupos e o último de cada grupo.'],
+  sources: [{ t: 'Diário do Pará — FPF define grupos do Parazão 2027', u: 'https://diariodopara.com.br/bola/fpf-define-grupos-do-parazao-2027-e-confirma-novidade-na-rodada-inicial/' },
+    { t: 'O Liberal — congresso técnico do Parazão 2027', u: 'https://www.oliberal.com/esportes/futebol/paraz-o-2027-congresso-tecnico-define-regulamento-do-estadual-neste-sabado-7-1.1191450' }]
+});
+
+add({
+  id: 'rondoniense-2027', name: 'Campeonato Rondoniense 2027', group: 'Estaduais', icon: 'groups', crest: 'assets/logos/lg-ffer.png', short: '8 clubes · 2 grupos (Capital e Interior) + mata-mata',
+  entries: { gA: I('sport-genus', 'barcelona-ro', 'porto-velho', 'rondoniense'), gB: I('guapore', 'vilhena', 'rolim-de-moura', 'ji-parana') },
+  roles: { gA: 'Grupo Capital', gB: 'Grupo Interior' }, champion: { phase: 1 },
+  phases: [
+    { type: 'rr', name: 'Primeira fase', groups: { method: 'roles', roles: ['gA', 'gB'], names: ['Grupo Capital', 'Grupo Interior'] }, legs: 2, tiebreak: ['pts', 'w', 'gd', 'gf'],
+      zonesEach: [zone(1, 1, Z.champion, 'Direto na semifinal'), zone(2, 3, Z.lib, 'Repescagem')] },
+    { type: 'ko', name: 'Mata-mata', after: [0], teams: { list: [1, 2, 3].flatMap(p => [{ phase: 0, group: 0, pos: [p, p] }, { phase: 0, group: 1, pos: [p, p] }]) },
+      pairing: 'pairs', pairs: [[0, null], [3, 4], [1, null], [2, 5]], legs: 2, et: false, pens: true,
+      roundsCfg: [{ legs: 1, pens: false, better: true }], roundNames: ['Repescagem', 'Semifinal', 'Final'] },
+    { type: 'ko', name: 'Disputa de 3º lugar', after: [{ phase: 1, round: 1 }], teams: { phase: 1, roundLosers: 1 }, pairing: 'pairs', pairs: [[0, 1]], legs: 1, et: false, pens: true, maxRounds: 1, roundNames: ['Disputa de 3º lugar'] }
+  ],
+  rules: ['8 clubes em 2 grupos de 4 (Capital e Interior), em turno e returno dentro do grupo.',
+    'Os campeões dos grupos vão direto à semifinal. Repescagem em jogo único: 2º do Interior × 3º da Capital e 2º da Capital × 3º do Interior, na casa do 2º colocado, que passa com empate.',
+    'Semifinal em ida e volta (campeão de um grupo × classificado da repescagem do outro lado) e final em ida e volta. Empate vai aos pênaltis.',
+    'Disputa de 3º lugar em jogo único entre os eliminados na semifinal (vale vaga na Copa do Brasil).'],
+  notes: ['O formato da final e o rebaixamento não foram divulgados (o modelo usa ida e volta e não rebaixa). O Porto Velho aparece como Gazin Porto Velho na imprensa.'],
+  sources: [{ t: 'Diário RO — FFER e clubes definem o novo formato do Rondoniense 2027', u: 'https://www.diarioro.com.br/2026/10/30/em-congresso-tecnico-ffer-e-clubes-definem-novo-formato-rondoniense-sicredi-2027/' }]
+});
+
+estadual({ id: 'roraimense-2027', crest: 'assets/logos/lg-frf.png', name: 'Campeonato Roraimense 2027', short: '8 clubes · turno único + semifinal e final em jogo único',
+  teams: ['gremio-atletico-sampaio', 'bare', 'sao-raimundo-rr', 'monte-roraima', 'river-rr', 'rio-negro-rr', 'nautico-rr', 'progresso-rr'], semiLegs: 1, finalLegs: 1,
+  notes: ['A FRF ainda não divulgou o Roraimense 2027. O modelo usa os 9 clubes de 2026 menos o Atlético Roraima, rebaixado pela primeira vez na história, e o formato de 2026.'],
+  sources: [{ t: 'Folha BV — números do Roraimense 2026 e o rebaixamento inédito', u: 'https://www.folhabv.com.br/esporte/campeonato-roraimense-termina-com-132-gols-rebaixamento-inedito-e-artilheiro-com-10-gols-confira-os-numeros-do-estadual' },
+    { t: 'Terra — formato do Roraimense 2026', u: 'https://www.terra.com.br/esportes/roraimense-inicia-neste-sabado-24-confira-os-duelos-e-onde-assistir,bc0785a8a02aa65455e7639c80e23f6a8ffeai8j.html' }] });
+
+estadual({ id: 'tocantinense-2027', crest: 'assets/logos/lg-ftf.png', name: 'Campeonato Tocantinense 2027', short: '8 clubes · turno único + semifinal e final em ida e volta',
+  teams: ['tocantinopolis', 'araguaina', 'capital-to', 'batalhao', 'gurupi', 'guarai', 'bela-vista-to', 'uniao-atletico-to'], rel: 2, semiLegs: 2, finalLegs: 2,
+  notes: ['Vagas de 2028 (3 na Copa do Brasil e 2 na Série D) não entram aqui.'],
+  sources: [{ t: 'Leal Júnior — FTF divulga tabela do Tocantinense 2027', u: 'https://lealjunior.com.br/ftf-divulga-tabela-do-tocantinense-2027-com-inicio-previsto-para-16-de-janeiro/' }] });
+
 
 
 /* ======================== AMÉRICA DO SUL ======================== */

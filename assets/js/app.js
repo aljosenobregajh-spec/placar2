@@ -610,7 +610,9 @@ function tplIcon(t) {
 }
 Pages.competicoes = () => {
   const comps = Store.d.comps.filter(c => !c.cycle).reverse();
-  const groups = TEMPLATE_GROUPS.map(g => [g, TEMPLATES.filter(t => (t.group || 'Outras ligas') === g)]).filter(([, l]) => l.length);
+  const abc = t => t.name.replace(/^Campeonato\s+/, '');
+  const groups = TEMPLATE_GROUPS.map(g => [g, TEMPLATES.filter(t => (t.group || 'Outras ligas') === g)]).filter(([, l]) => l.length)
+    .map(([g, l]) => [g, g === 'Estaduais' ? [...l].sort((a, b) => abc(a).localeCompare(abc(b), 'pt', { sensitivity: 'base' })) : l]);
   return `<section class="page"><div class="wrap">
     <div class="page-head"><div><h1>Competições</h1><p>Os modelos oficiais seguem o regulamento de cada competição (fases, desempates, playoffs, acesso e rebaixamento) e deixam trocar qualquer clube antes do sorteio. Ou crie uma do zero.</p></div>
       <button class="btn btn-lime" data-act="newComp">${I.plus} Nova competição</button></div>

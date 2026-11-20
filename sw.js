@@ -1,7 +1,7 @@
 /* Placar — service worker: deixa o site abrir sem internet depois da primeira visita.
    Páginas, estilos e scripts: rede primeiro (pega as atualizações), cópia salva se estiver offline.
    Escudos e fontes: cópia salva primeiro (quase nunca mudam). */
-const VERSION = 'placar-v14';
+const VERSION = 'placar-v17';
 const CORE = ['./', 'index.html', 'assets/css/style.css', 'assets/js/data.js', 'assets/js/nations.js', 'assets/js/engine.js', 'assets/js/reg.js', 'assets/js/templates.js', 'assets/js/worldcup.js', 'assets/js/wc-ui.js', 'assets/js/app.js', 'manifest.webmanifest', 'assets/icons/icon-192.png'];
 
 self.addEventListener('install', e => {

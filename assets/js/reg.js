@@ -350,6 +350,18 @@ const Reg = (() => {
       const bal = balance(single, ids);
       games = games.filter(g => Math.floor(ids.indexOf(g[0]) / 2) === Math.floor(ids.indexOf(g[1]) / 2)).concat(bal);
       R = 6;
+    } else if (kind === 'pots4x4') {
+      // Paulistão: 16 clubes em 4 potes de 4 (na ordem dos potes); cada um enfrenta os 3 do próprio pote
+      // e 5 dos outros potes, uma vez — 8 rodadas, 64 jogos
+      const P = (p, i) => ids[p * 4 + i];
+      for (let p = 0; p < 4; p++) for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) games.push([P(p, i), P(p, j)]);
+      const cross = [[[0, 1], [2, 3], 0], [[0, 1], [2, 3], 1], [[0, 2], [1, 3], 0], [[0, 2], [1, 3], 1], [[0, 3], [1, 2], 0]];
+      cross.forEach(([x, y, sh]) => [x, y].forEach(([a, b]) => { for (let i = 0; i < 4; i++) games.push([P(a, i), P(b, (i + sh) % 4)]); }));
+      games = balance(games, ids); R = 8;
+    } else if (kind === 'blocks4') {
+      // tabela única, mas os clubes do mesmo bloco de 4 (na ordem dada) não se enfrentam — ex.: Goianão, 3 grupos de 4
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) if (Math.floor(a / 4) !== Math.floor(b / 4)) games.push([ids[a], ids[b]]);
+      games = balance(games, ids); R = n - 4;
     }
     for (let t = 0; t < 200; t++) {
       const rds = E.matchdays(games, ids, R);
