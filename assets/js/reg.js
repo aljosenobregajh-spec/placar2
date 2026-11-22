@@ -137,10 +137,18 @@ const Reg = (() => {
     const rows = computeRows(ids, ms);
     return rankList(Object.values(rows), ['pts', 'w', 'gd', 'gf'], ms);
   }
+  let rankHook = null;
+  const setRankHook = f => { rankHook = f; };
   function sortIds(comp, ids, by) {
     if (!by) return ids;
     let order;
     if (by.rating) return ids.slice().sort((x, y) => E.ovr(T(y)) - E.ovr(T(x)));
+    if (by.rank) {
+      // ranking externo (ex.: ranking do ciclo da Copa); sem ele, vale a força do time
+      const pts = rankHook ? rankHook(comp) : null;
+      if (!pts) return ids.slice().sort((x, y) => E.ovr(T(y)) - E.ovr(T(x)));
+      return ids.slice().sort((x, y) => (pts[y] ?? -1e9) - (pts[x] ?? -1e9));
+    }
     if (by.campaign) order = campaignRows(comp, by.campaign).map(r => r.id);
     else if (by.phase != null) {
       const st = comp.stages[by.phase];
@@ -907,5 +915,5 @@ const Reg = (() => {
     }).filter(o => o.ids && o.ids.length);
   }
 
-  return { overallOrder, resolve, awaiting, confirm, finished, create, advance, step, simulateAll, playOne, clearResults, redraw, progress, rank, stageDone, wouldDiscard, invalidate, currentStage, currentLabel, outcomes, dependents };
+  return { setRankHook, overallOrder, resolve, awaiting, confirm, finished, create, advance, step, simulateAll, playOne, clearResults, redraw, progress, rank, stageDone, wouldDiscard, invalidate, currentStage, currentLabel, outcomes, dependents };
 })();

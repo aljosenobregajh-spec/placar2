@@ -81,6 +81,9 @@ const Store = {
   }
 };
 
+// sorteios das fases seguintes das eliminatórias usam o ranking do ciclo atualizado
+Reg.setRankHook(comp => (comp.cycle && Store.d ? WC.rankPts(Store.d, comp) : null));
+
 /* ================= Clubes ================= */
 const Teams = {
   map: {},

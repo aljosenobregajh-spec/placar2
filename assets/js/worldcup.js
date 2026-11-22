@@ -75,7 +75,7 @@ const WC = (() => {
     const pairs = [];
     if (E === 2 * P) for (let k = 0; k < P; k++) pairs.push([k, 2 * P - 1 - k]);
     else for (let k = 0; k < P; k++) pairs.push([k, 4 * P - 1 - k], [P + k, 3 * P - 1 - k]);
-    phases.push({ type: 'ko', name, after, teams: { ...src, take: [0, E] }, pairing: 'pairs', pairs, legs: 1, neutral: true, et: true, pens: true,
+    phases.push({ type: 'ko', name, after, teams: { list: [{ ...src, take: [0, E] }], sortBy: { rank: true } }, pairing: 'pairs', pairs, legs: 1, neutral: true, et: true, pens: true,
       maxRounds: E === 2 * P ? 1 : 2, roundNames: E === 2 * P ? ['Decisão'] : ['Semifinal', 'Final'], ...cfg });
     return { phase: phases.length - 1, winners: true };
   }
@@ -95,7 +95,7 @@ const WC = (() => {
         { type: 'rr', name: 'Fase de grupos', teams: { entry: 'teams' }, groups: { count: G }, legs: 2, tiebreak: TB_UEFA,
           zonesEach: [zone(1, 1, Z.lib, 'Classificado para a Copa'), zone(2, 2, Z.prelib, ru >= G ? 'Repescagem europeia' : `Os ${ru} melhores 2ºs vão à repescagem`)] },
         { type: 'ko', name: 'Repescagem', after: [0], confirm: { role: 'nl', count: paths, label: 'vindas da Liga das Nações', kind: 'nl' },
-          teams: { list: [{ phase: 0, perGroup: [2, 2], fair: true, take: [0, ru] }, { entry: 'nl' }] }, pairing: 'pairs', pairs, legs: 1, et: true, pens: true, maxRounds: 2,
+          teams: { list: [{ list: [{ phase: 0, perGroup: [2, 2], fair: true, take: [0, ru] }], sortBy: { rank: true } }, { entry: 'nl' }] }, pairing: 'pairs', pairs, legs: 1, et: true, pens: true, maxRounds: 2,
           roundNames: ['Semifinal da repescagem', 'Final da repescagem'] }
       ];
       return {
@@ -123,7 +123,7 @@ const WC = (() => {
       return {
         phases, direct: [{ label: 'Campeões de grupo', src: all ? { phase: 0, perGroup: [1, 1] } : { phase: 0, perGroup: [1, 1], fair: true, take: [0, D] } }], playoff: po ? [{ label: 'Repescagem mundial', src: po }] : [],
         rules: [`${N} seleções em ${G} grupos, ida e volta. ${all ? `Os ${D} campeões de grupo vão à Copa.` : `Os ${D} campeões de melhor campanha vão à Copa.`}`,
-          ...(P ? [`${all ? 'Os melhores segundos colocados' : 'Os outros campeões e os melhores segundos colocados'} disputam, em jogo único e campo neutro, ${P === 1 ? 'a vaga' : `as ${P} vagas`} da África na repescagem mundial.`] : [])]
+          ...(P ? [`${all ? 'Os melhores segundos colocados' : 'Os outros campeões e os melhores segundos colocados'} disputam, em jogo único e campo neutro, ${P === 1 ? 'a vaga' : `as ${P} vagas`} da África na repescagem mundial; a chave segue o ranking do ciclo (1º × 4º, 2º × 3º).`] : [])]
       };
     },
     AFC(N, D, P) {
@@ -132,13 +132,13 @@ const WC = (() => {
       const r2 = phases.length;
       phases.push({ type: 'rr', name: '2ª fase', after: k ? [0] : [], teams: src2, groups: { count: 9 }, legs: 2, tiebreak: TB, zonesEach: [zone(1, 2, Z.up, 'Avança à 3ª fase')] });
       const r3 = phases.length, d3 = Math.min(D, 6), D4 = D - d3;
-      phases.push({ type: 'rr', name: '3ª fase', after: [r2], teams: { phase: r2, perGroup: [1, 2] }, groups: { count: 3 }, legs: 2, tiebreak: TB,
+      phases.push({ type: 'rr', name: '3ª fase', after: [r2], teams: { phase: r2, perGroup: [1, 2], sortBy: { rank: true } }, groups: { count: 3 }, legs: 2, tiebreak: TB,
         zonesEach: D >= 6 ? [zone(1, 2, Z.lib, 'Classificado para a Copa'), ...(D4 + P ? [zone(3, 4, Z.prelib, '4ª fase')] : [])] : [zone(1, 1, Z.lib, 'Classificado para a Copa'), zone(2, 4, Z.prelib, 'Depende da campanha: vaga direta ou 4ª fase')] });
       const direct = d3 ? [{ label: 'Classificados na 3ª fase', src: { phase: r3, perGroup: [1, 2], take: [0, d3] } }] : [];
       const playoff = [];
       if (D4 + P > 0) {
         const r4 = phases.length;
-        phases.push({ type: 'rr', name: '4ª fase', after: [r3], teams: { phase: r3, perGroup: [1, 4], take: [d3, d3 + 6] }, groups: { count: 2 }, legs: 1, tiebreak: TB,
+        phases.push({ type: 'rr', name: '4ª fase', after: [r3], teams: { list: [{ phase: r3, perGroup: [1, 4], take: [d3, d3 + 6] }], sortBy: { rank: true } }, groups: { count: 2 }, legs: 1, tiebreak: TB,
           zonesEach: [zone(1, 1, Z.lib, D4 === 2 ? 'Classificado para a Copa' : D4 === 1 ? 'Decide a vaga direta' : 'Disputa a repescagem mundial'), ...((D4 === 2 && P) || (D4 === 1 && P === 2) ? [zone(2, 2, Z.prelib, 'Disputa a repescagem mundial')] : [])] });
         const Wn = { phase: r4, perGroup: [1, 1] }, Rn = { phase: r4, perGroup: [2, 2] };
         const tie = (teams, pairs) => { phases.push({ type: 'ko', name: '5ª fase', after: [r4], teams, pairing: 'pairs', pairs, legs: 2, et: true, pens: true, maxRounds: 1, roundNames: ['5ª fase'] }); return phases.length - 1; };
@@ -157,6 +157,7 @@ const WC = (() => {
         phases, direct, playoff,
         rules: [...(k ? [`1ª fase: as ${2 * k} piores do ranking jogam ida e volta; as vencedoras se juntam às outras ${N - 2 * k}.`] : []),
           '2ª fase: 9 grupos, ida e volta; os 2 primeiros de cada grupo avançam.',
+          '3ª e 4ª fases sorteadas por potes pelo ranking do ciclo.',
           `3ª fase: 3 grupos de 6, ida e volta. ${D >= 6 ? 'Os 2 primeiros de cada grupo vão à Copa.' : `As ${d3} melhores campanhas entre 1ºs e 2ºs vão à Copa.`}`,
           ...(D4 + P > 0 ? [`4ª fase: as 6 seguintes em 2 grupos de 3, turno único. ${D4 === 2 ? 'Os campeões vão à Copa' : D4 === 1 ? 'Os campeões decidem a última vaga direta em ida e volta (5ª fase)' : 'Os campeões disputam a repescagem mundial'}${P ? `; ${P === 1 ? '1 seleção vai' : '2 seleções vão'} à repescagem mundial` : ''}.`] : [])]
       };
@@ -170,12 +171,13 @@ const WC = (() => {
       const zs = [];
       if (D >= 3) zs.push(zone(1, D >= 6 ? 2 : 1, Z.lib, 'Classificado para a Copa'));
       if (D < 6 && D + P > w) zs.push(zone(D >= 3 ? 2 : 1, D + P > 3 ? 2 : 1, Z.prelib, D > 3 || (D > 0 && D < 3) ? 'Depende da campanha: Copa ou repescagem mundial' : D === 0 ? 'Melhores campanhas vão à repescagem mundial' : 'Os melhores 2ºs vão à repescagem mundial'));
-      phases.push({ type: 'rr', name: '3ª fase', after: [r2], teams: { phase: r2, perGroup: [1, 2] }, groups: { count: 3 }, legs: 2, tiebreak: TB, zonesEach: zs });
+      phases.push({ type: 'rr', name: '3ª fase', after: [r2], teams: { phase: r2, perGroup: [1, 2], sortBy: { rank: true } }, groups: { count: 3 }, legs: 2, tiebreak: TB, zonesEach: zs });
       const order = { phase: r3, perGroup: [1, 4] };
       return {
         phases, direct: D ? [{ label: 'Classificados', src: { ...order, take: [0, D] } }] : [], playoff: P ? [{ label: 'Repescagem mundial', src: { ...order, take: [D, D + P] } }] : [],
         rules: [...(k ? [`1ª fase: as ${2 * k} piores do ranking jogam ida e volta; as vencedoras se juntam às outras ${N - 2 * k}.`] : []),
           '2ª fase: 6 grupos em turno único; os 2 primeiros de cada grupo avançam.',
+          '3ª fase sorteada em 4 potes de 3 pelo ranking do ciclo (um de cada pote por grupo).',
           `3ª fase: 3 grupos de 4, ida e volta. ${D === 3 ? 'Os 3 campeões vão à Copa' : D === 6 ? 'Campeões e vices vão à Copa' : D ? `As ${D} melhores campanhas (campeões primeiro, depois os melhores 2ºs) vão à Copa` : 'Não há vaga direta'}${P ? `; ${D === 3 ? `${P === 1 ? 'o melhor 2º vai' : 'os 2 melhores 2ºs vão'}` : `${P === 1 ? 'a seguinte vai' : 'as 2 seguintes vão'}`} à repescagem mundial` : ''}.`]
       };
     },
@@ -217,8 +219,8 @@ const WC = (() => {
     return TPL[id];
   };
   CONFS.forEach(c => tpl('wc-' + c.k.toLowerCase(), { name: `Eliminatórias · ${c.name}`, short: `Eliminatórias da Copa do Mundo · ${c.full}`, crest: c.logo,
-    rules: ['Formato das eliminatórias de 2026, ajustado às sedes e às vagas deste ciclo. As sedes não jogam: já estão na Copa.', 'Potes dos sorteios pelo ranking do ciclo.'],
-    notes: c.k === 'UEFA' ? ['As seleções da Liga das Nações que entram na repescagem não são calculadas sozinhas: você confirma (ou importa de uma Liga das Nações salva) quando os grupos terminam.', 'Na repescagem real, os caminhos são sorteados por potes; aqui os potes são distribuídos em ordem.'] : [] }));
+    rules: ['Formato das eliminatórias de 2026, ajustado às sedes e às vagas deste ciclo. As sedes não jogam: já estão na Copa.', 'Potes e chaves pelo ranking do ciclo no momento do sorteio, como na vida real: a 1ª fase e os grupos iniciais usam o ranking de início do ciclo; as fases seguintes (3ª e 4ª fases da Ásia, 3ª fase da Concacaf, repescagens da Europa e da África) são sorteadas pelo ranking atualizado, não pela campanha.'],
+    notes: c.k === 'UEFA' ? ['As seleções da Liga das Nações que entram na repescagem não são calculadas sozinhas: você confirma (ou importa de uma Liga das Nações salva) quando os grupos terminam.', 'Na repescagem, os segundos colocados são ordenados pelo ranking do ciclo (como na vida real) e as seleções da Liga das Nações formam o último pote. Na vida real os caminhos são sorteados dentro dos potes; aqui são distribuídos em ordem.'] : [] }));
   tpl('wc-playoff', { name: 'Repescagem mundial', short: '6 seleções · 2 vagas na Copa', icon: 'knockout', crest: TROPHY || CUP_LOGO,
     rules: ['Seis seleções em jogo único e campo neutro. As 2 mais bem ranqueadas esperam na final; as outras 4 jogam as semifinais.', 'Os 2 vencedores das finais vão à Copa do Mundo.'],
     notes: ['No torneio real, duas seleções da mesma confederação ficam em caminhos diferentes; aqui a chave segue só o ranking.'] });
@@ -577,6 +579,11 @@ const WC = (() => {
     d.cycles = d.cycles.filter(c => c !== cy);
   }
 
-  return { CONFS, CUP_LOGO, TROPHY, MAX_HOSTS, LIMITS, confOf, members, allNations, suggestQuotas, validateQuotas, createCycle, status, sync, syncAll, isLocked, drawFinals, undrawFinals,
+  // pontos do ranking do ciclo agora (só eliminatórias), para os sorteios das fases seguintes
+  function rankPts(d, comp) {
+    const cy = (d.cycles || []).find(x => x.id === comp.cycle);
+    return cy ? ranking(d, cy, { until: 'qual' }).pts : null;
+  }
+  return { rankPts, CONFS, CUP_LOGO, TROPHY, MAX_HOSTS, LIMITS, confOf, members, allNations, suggestQuotas, validateQuotas, createCycle, status, sync, syncAll, isLocked, drawFinals, undrawFinals,
     stepAll, runStage, pending, prepare, nlState, importNL, ranking, baseRank, podium, hall, compact, appsBefore, appearances, clinched, boost, BOOST_MAX, removeCycle, compsOf, part, played };
 })();
